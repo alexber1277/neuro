@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"time"
 )
 
 type Perc struct {
@@ -52,12 +53,14 @@ type NetPerc struct {
 }
 
 func InitNetPerc(layer, neurons int) *NetPerc {
-	return &NetPerc{
+	n := &NetPerc{
 		Layers:  layer,
 		Neurons: neurons,
 		Result:  Result{},
 		Net:     [][]*Perc{},
 	}
+	n.SetFinAct(true)
+	return n
 }
 
 func (n *NetPerc) SetRegress(reg bool) *NetPerc {
@@ -291,6 +294,7 @@ func (p *Perc) proizvod() float64 {
 
 func (n *NetPerc) Train(showIter ...int) {
 	var iter int
+	start := time.Now()
 	if len(showIter) > 0 {
 		iter = showIter[0]
 	} else {
@@ -315,6 +319,9 @@ func (n *NetPerc) Train(showIter ...int) {
 		n.logIter(i, iter)
 		n.CurrInd = 0
 	}
+	n.ErrorArr = nil
+	n.Data = nil
+	log.Println("teach time:", time.Now().Sub(start).String())
 }
 
 func (n *NetPerc) calcMainErrorDataSet() {
@@ -375,7 +382,6 @@ func (n *NetPerc) Equal(d1, d2 []float64) bool {
 	} else {
 		n.Result.False += 1
 	}
-	fmt.Println(d1, " === ", d2)
 	return res
 }
 
@@ -411,6 +417,7 @@ func (n *NetPerc) CalcStatRegress(data []*DataTeach, count int) *NetPerc {
 }
 
 func (n *NetPerc) CalcStat(data []*DataTeach, count int) *NetPerc {
+	n.Result = Result{}
 	for i := 0; i < count; i++ {
 		index := randInt(len(data))
 		n.Equal(n.Predict(data[index].Inputs), data[index].Outputs)
