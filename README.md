@@ -40,7 +40,7 @@ func main() {
 	debug(net.Result)                    // show result  {"accuracy":100,"false":0,"true":100}
 
 	if net.Accuracy(99.0) { // set minimal right answers percent
-		//net.Save(fileNameDump) // save dump
+		net.Save(fileNameDump) // save dump
 	}
 
 }
