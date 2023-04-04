@@ -8,18 +8,22 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"reflect"
+	"sync"
 	"time"
+	//"github.com/jinzhu/copier"
 )
 
 type Perc struct {
-	Value   float64   `json:"value"`
-	PreVals []float64 `json:"pre_vals"`
-	Weights []float64 `json:"weights"`
-	Error   float64   `json:"error"`
-	Start   bool      `json:"start"`
-	Final   bool      `json:"final"`
-	Bias    bool      `json:"bias"`
+	Mtx     sync.Mutex `json:"-"`
+	Value   float64    `json:"value"`
+	PreVals []float64  `json:"pre_vals"`
+	Weights []float64  `json:"weights"`
+	Error   float64    `json:"error"`
+	Start   bool       `json:"start"`
+	Final   bool       `json:"final"`
+	Bias    bool       `json:"bias"`
 }
 
 type DataTeach struct {
@@ -34,23 +38,25 @@ type Result struct {
 }
 
 type NetPerc struct {
-	Layers      int          `json:"layer"`
-	Neurons     int          `json:"neurons"`
-	Inps        int          `json:"inps"`
-	Outs        int          `json:"outs"`
-	Iters       int          `json:"iters"`
-	CurrInd     int          `json:"curr_ind"`
-	Error       float64      `json:"error"`
-	LearnRate   float64      `json:"learn_rate"`
-	Result      Result       `json:"result"`
-	Bias        bool         `json:"bias"`
-	FinalAct    bool         `json:"final_act"`
-	Regress     bool         `json:"regress"`
-	ErrorArr    []float64    `json:"error_arr"`
-	RandWeights []float64    `json:"random_waights"`
-	Data        []*DataTeach `json:"data"`
-	Net         [][]*Perc    `json:"net"`
+	Layers      int         `json:"layer"`
+	Neurons     int         `json:"neurons"`
+	Inps        int         `json:"inps"`
+	Outs        int         `json:"outs"`
+	Iters       int         `json:"iters"`
+	CurrInd     int         `json:"curr_ind"`
+	Error       float64     `json:"error"`
+	LearnRate   float64     `json:"learn_rate"`
+	Result      Result      `json:"result"`
+	Bias        bool        `json:"bias"`
+	FinalAct    bool        `json:"final_act"`
+	Regress     bool        `json:"regress"`
+	ErrorArr    []float64   `json:"error_arr"`
+	RandWeights []float64   `json:"random_waights"`
+	Data        []DataTeach `json:"data"`
+	Net         [][]*Perc   `json:"net"`
 }
+
+var mtx sync.Mutex
 
 func InitNetPerc(layer, neurons int) *NetPerc {
 	n := &NetPerc{
@@ -60,6 +66,7 @@ func InitNetPerc(layer, neurons int) *NetPerc {
 		Net:     [][]*Perc{},
 	}
 	n.SetFinAct(true)
+	n.SetBias(false)
 	return n
 }
 
@@ -83,7 +90,7 @@ func (n *NetPerc) LRate(rate float64) *NetPerc {
 	return n
 }
 
-func (n *NetPerc) CreateNet(data []*DataTeach, iteration int) *NetPerc {
+func (n *NetPerc) CreateNet(data []DataTeach, iteration int) *NetPerc {
 	n.Inps = len(data[0].Inputs)
 	n.Outs = len(data[0].Outputs)
 	n.Iters = iteration
@@ -148,12 +155,23 @@ func (n *NetPerc) InitWeight() *NetPerc {
 }
 
 func (n *NetPerc) SetData(data DataTeach) *NetPerc {
-	n.Data = append(n.Data, &data)
+	n.Data = append(n.Data, data)
 	return n
 }
 
-func (n *NetPerc) SetDataAll(data []*DataTeach) *NetPerc {
+func (n *NetPerc) AppendSetData(data DataTeach) *NetPerc {
+	list := []DataTeach{data}
+	n.Data = append(list, n.Data...)
+	return n
+}
+
+func (n *NetPerc) SetDataAll(data []DataTeach) *NetPerc {
 	n.Data = append(n.Data, data...)
+	return n
+}
+
+func (n *NetPerc) SetDataAllNew(data []DataTeach) *NetPerc {
+	n.Data = data
 	return n
 }
 
@@ -173,11 +191,17 @@ func (n *NetPerc) setInputs() {
 	}
 }
 
+func (n *NetPerc) setInps(data []float64) {
+	for i, el := range n.Net[0] {
+		el.Value = data[i]
+	}
+}
+
 func (n *NetPerc) Accuracy(min float64) bool {
 	return n.Result.Percent >= min
 }
 
-func (n *NetPerc) getData() *DataTeach {
+func (n *NetPerc) getData() DataTeach {
 	return n.Data[n.CurrInd]
 }
 
@@ -195,7 +219,12 @@ func (n *NetPerc) derivative(val float64) float64 {
 	return val * (1 - val)
 }
 
+var mtxPre sync.Mutex
+
 func (p *Perc) addVals(preVal float64) {
+	if p.PreVals == nil {
+		p.PreVals = []float64{}
+	}
 	p.PreVals = append(p.PreVals, preVal)
 }
 
@@ -210,7 +239,7 @@ func (p *Perc) activation() {
 			tm += v
 		}
 		p.Value = p.sigmoid(tm)
-		p.PreVals = nil
+		p.PreVals = []float64{}
 	}
 }
 
@@ -221,11 +250,13 @@ func (p *Perc) activationWithOutAct() {
 			tm += v
 		}
 		p.Value = tm
-		p.PreVals = nil
+		p.PreVals = []float64{}
 	}
 }
 
 func (n *NetPerc) forwardPass() {
+	//mtx.Lock()
+	//defer mtx.Unlock()
 	for il, layer := range n.Net {
 		for _, perc := range layer {
 			if len(n.Net)-1 == il {
@@ -237,8 +268,10 @@ func (n *NetPerc) forwardPass() {
 			} else {
 				perc.activation()
 			}
-			for iw, weight := range perc.Weights {
-				n.Net[il+1][iw].addVals(perc.Value * weight)
+			if len(perc.Weights) > 0 {
+				for iw, weight := range perc.Weights {
+					n.Net[il+1][iw].addVals(perc.Value * weight)
+				}
 			}
 		}
 	}
@@ -252,6 +285,16 @@ func (n *NetPerc) getOuts() []*Perc {
 	return n.Net[len(n.Net)-1]
 }
 
+func (n *NetPerc) calcErrorIter() {
+	var allErr float64
+	for i, o := range n.getData().Outputs {
+		perc := n.getOut(i)
+		perc.Error = o - perc.Value
+		allErr += math.Pow(perc.Error, 2)
+	}
+	n.Error = allErr
+}
+
 func (n *NetPerc) calcError() {
 
 	// main error
@@ -262,6 +305,9 @@ func (n *NetPerc) calcError() {
 		allErr += math.Pow(perc.Error, 2)
 	}
 	n.Error = toFixed(allErr, 10)
+	if n.ErrorArr == nil {
+		n.ErrorArr = []float64{}
+	}
 	n.ErrorArr = append(n.ErrorArr, allErr)
 
 	// other perc error
@@ -302,6 +348,7 @@ func (n *NetPerc) Train(showIter ...int) {
 	}
 	n.setInputs()
 	for i := 0; i < n.Iters; i++ {
+
 		for e := 0; e < len(n.Data); e++ {
 			// ===========================
 			n.setInputs()
@@ -318,19 +365,92 @@ func (n *NetPerc) Train(showIter ...int) {
 		n.calcMainErrorDataSet()
 		n.logIter(i, iter)
 		n.CurrInd = 0
+
 	}
-	n.ErrorArr = nil
-	n.Data = nil
+	n.ErrorArr = []float64{}
+	//n.Data = nil
 	log.Println("teach time:", time.Now().Sub(start).String())
 }
 
-func (n *NetPerc) calcMainErrorDataSet() {
-	var sumErr float64
-	for _, fl := range n.ErrorArr {
-		sumErr += fl
+func (n *NetPerc) TrainIter() {
+	n.CurrInd = randInt(len(n.Data) - 1)
+	n.setInputs()
+	// ===========================
+	n.forwardPass()
+	// ===========================
+	n.calcErrorIter()
+	//println(fmt.Sprintf("%.20f", n.Error))
+	// ===========================
+}
+
+func (n *NetPerc) DataCopy() *NetPerc {
+	var list []DataTeach
+	for i := 0; i < len(n.Data); i++ {
+		dt := DataTeach{}
+		copy(dt.Inputs, n.Data[i].Inputs)
+		copy(dt.Outputs, n.Data[i].Outputs)
+		list = append(list, dt)
 	}
-	n.ErrorArr = nil
+	n.Data = list
+	return n
+}
+
+func (n *NetPerc) TrainIters() *NetPerc {
+	for e := 0; e < len(n.Data); e++ {
+		// ===========================
+		n.setInputs()
+		// ===========================
+		n.forwardPass()
+		// ===========================
+		n.calcError()
+		// ===========================
+		n.backPropogation()
+		// ===========================
+		n.nextData()
+		// ===========================
+	}
+	n.calcMainErrorDataSet()
+	return n
+}
+func (n *NetPerc) TrainItersNew() *NetPerc {
+	n.CurrInd = randInt(len(n.Data) - 1)
+	n.setInputs()
+	n.forwardPass()
+	n.calcErrorIter()
+	n.calcMainErrorDataSet()
+	return n
+}
+
+func (n *NetPerc) calcMainErrorDataSet() {
+	var sumErr float64 = 0
+	for _, fl := range n.ErrorArr {
+		if math.IsNaN(fl) {
+			sumErr += 1
+		} else {
+			sumErr += fl
+		}
+	}
+	n.ErrorArr = []float64{}
 	n.Error = sumErr / float64(len(n.Data))
+}
+
+func (n *NetPerc) PredictClear(data []float64) []float64 {
+	n.CurrInd = 0
+	n.setInps(data)
+	n.forwardPass()
+	var response []float64
+	for _, perc := range n.getOuts() {
+		if n.Regress {
+			response = append(response, toFixed(perc.Value, 3))
+		} else {
+			response = append(response, roundFl(perc.Value))
+		}
+	}
+	return response
+}
+
+func (n *NetPerc) clearData() {
+	n.Data = n.Data[1:]
 }
 
 func (n *NetPerc) Predict(data []float64) []float64 {
@@ -416,11 +536,15 @@ func (n *NetPerc) CalcStatRegress(data []*DataTeach, count int) *NetPerc {
 	return n
 }
 
-func (n *NetPerc) CalcStat(data []*DataTeach, count int) *NetPerc {
-	n.Result = Result{}
+var mtxCalc sync.Mutex
+
+func (n *NetPerc) CalcStat(count int) *NetPerc {
+	mtxCalc.Lock()
+	defer mtxCalc.Unlock()
+	//n.Result = Result{}
 	for i := 0; i < count; i++ {
-		index := randInt(len(data))
-		n.Equal(n.Predict(data[index].Inputs), data[index].Outputs)
+		index := randInt(len(n.Data) - 1)
+		n.Equal(n.PredictClear(n.Data[index].Inputs), n.Data[index].Outputs)
 	}
 	n.Result.Percent = (float64(n.Result.True-n.Result.False) / (float64(n.Result.False+n.Result.True) / 2) * 100) / 2
 	return n
@@ -475,6 +599,10 @@ func randFloats(min, max float64, n int) []float64 {
 	return res
 }
 
+func randFloat(min, max float64) float64 {
+	return min + rand.Float64()*(max-min)
+}
+
 func randInt(max int) int {
 	return rand.Intn(max)
 }
@@ -500,4 +628,84 @@ func toFixed(num float64, precision int) float64 {
 
 func round(num float64) int {
 	return int(num + math.Copysign(0.5, num))
+}
+
+func (n *NetPerc) Copy() *NetPerc {
+	var nn NetPerc
+	bts, err := json.Marshal(n)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := json.Unmarshal(bts, &nn); err != nil {
+		log.Fatal(err)
+	}
+	nn.Error = 0
+	nn.ErrorArr = []float64{}
+	nn.Result = Result{}
+	return &nn
+
+	/*
+		nn := NetPerc{}
+		nn.Layers = n.Layers
+		nn.Neurons = n.Neurons
+		nn.Inps = n.Inps
+		nn.Outs = n.Outs
+		nn.Iters = n.Iters
+		nn.CurrInd = n.CurrInd
+		nn.Error = n.Error
+		nn.LearnRate = n.LearnRate
+		nn.FinalAct = n.FinalAct
+		nn.ErrorArr = nil
+		nn.RandWeights = n.RandWeights
+
+		for i, el := range n.Data {
+			dt := DataTeach{
+				Inputs:  make([]float64, len(el.Inputs)),
+				Outputs: make([]float64, len(el.Outputs)),
+			}
+			copy(dt.Inputs, n.Data[i].Inputs)
+			copy(dt.Outputs, n.Data[i].Outputs)
+			nn.Data = append(nn.Data, dt)
+		}
+
+		for _, els := range n.Net {
+			var listPerc []*Perc
+			for _, el := range els {
+				p := Perc{
+					Error: el.Error,
+					Start: el.Start,
+					Final: el.Final,
+					Bias:  el.Bias,
+					Value: el.Value,
+				}
+				p.PreVals = make([]float64, len(el.PreVals))
+				p.Weights = make([]float64, len(el.Weights))
+				copy(p.PreVals, el.PreVals)
+				copy(p.Weights, el.Weights)
+				listPerc = append(listPerc, &p)
+			}
+			nn.Net = append(nn.Net, listPerc)
+		}
+		return &nn
+	*/
+
+}
+
+func (n *NetPerc) mutateWeight(min, max float64) {
+	layer := randInt(n.Layers + 1)
+	per := randInt(len(n.Net[layer]) - 1)
+	weightsLength := 0
+	if len(n.Net[layer][per].Weights)-1 > 0 {
+		weightsLength = randInt(len(n.Net[layer][per].Weights) - 1)
+	}
+	n.Net[layer][per].Weights[weightsLength] = randFloat(min, max)
+}
+
+func debug(in interface{}) {
+	bt, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal("error debug: ", err)
+	}
+	println(string(bt))
+	os.Exit(0)
 }
