@@ -24,8 +24,8 @@ type GeneticConf struct {
 }
 
 var defaultConf = GeneticConf{
-	Population:     100,
-	LastBest:       10,
+	Population:     500,
+	LastBest:       100,
 	MinRandWeight:  -100,
 	MaxRandWeight:  100,
 	LimitMutateSub: 100,
