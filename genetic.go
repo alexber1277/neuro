@@ -37,6 +37,7 @@ func InitGenetic(conf ...GeneticConf) *Genetic {
 	if len(conf) != 0 {
 		g.Config = conf[0]
 	}
+	g.Error = 1
 	return g
 }
 
@@ -75,13 +76,25 @@ func (g *Genetic) showList(max ...int) {
 	}
 }
 
+func (g *Genetic) TrainItem(ret func(n *NetPerc)) {
+	var wg sync.WaitGroup
+	for i, _ := range g.Nets {
+		wg.Add(1)
+		go func(ind int) {
+			defer wg.Done()
+			ret(g.Nets[ind])
+		}(i)
+	}
+	wg.Wait()
+}
+
 func (g *Genetic) Train(last bool) {
 	var wg sync.WaitGroup
 	wg.Add(len(g.Nets))
 	for i, _ := range g.Nets {
 		go func(ind int) {
 			defer wg.Done()
-			g.Nets[ind].TrainIters()
+			g.Nets[ind].TrainIter()
 		}(i)
 	}
 	wg.Wait()
@@ -103,9 +116,8 @@ func (g *Genetic) sliceBest() {
 
 func (g *Genetic) mutate() {
 	var (
-		listNets    []*NetPerc
-		listNetsAdd []*NetPerc
 		wg          sync.WaitGroup
+		listNetsAdd []*NetPerc
 	)
 	ind := len(g.Nets) - 1
 	for s := ind; s <= g.Config.Population; s++ {
@@ -114,13 +126,18 @@ func (g *Genetic) mutate() {
 			defer wg.Done()
 			r := randInt(len(g.Nets) - 1)
 			n := g.Nets[r].Copy()
+			var wgw sync.WaitGroup
 			for i := 0; i < g.Config.LimitMutateSub; i++ {
-				n.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
+				wgw.Add(1)
+				go func() {
+					wgw.Done()
+					n.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
+				}()
 			}
+			wgw.Wait()
 			listNetsAdd = append(listNetsAdd, n)
 		}()
 	}
 	wg.Wait()
-	g.Nets = append(g.Nets, listNets...)
 	g.Nets = append(g.Nets, listNetsAdd...)
 }

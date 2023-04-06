@@ -54,6 +54,7 @@ type NetPerc struct {
 	RandWeights []float64   `json:"random_waights"`
 	Data        []DataTeach `json:"data"`
 	Net         [][]*Perc   `json:"net"`
+	Score       float64     `json:"score"`
 }
 
 var mtx sync.Mutex
@@ -88,6 +89,35 @@ func (n *NetPerc) SetBias(bias bool) *NetPerc {
 func (n *NetPerc) LRate(rate float64) *NetPerc {
 	n.LearnRate = rate
 	return n
+}
+
+func (n *NetPerc) CreateNetGraph(data []DataTeach, out int) *NetPerc {
+	n.Inps = len(data[0].Inputs)
+	n.Outs = out
+	n.SetDataAll(data)
+	var inps, outs []*Perc
+	for i := 0; i < n.Inps; i++ {
+		inps = append(inps, &Perc{Start: true})
+	}
+	if n.Bias {
+		inps = append(inps, n.AddBias())
+	}
+	n.Net = append(n.Net, inps)
+	for i := 0; i < n.Layers; i++ {
+		perces := []*Perc{}
+		for p := 0; p < n.Neurons; p++ {
+			perces = append(perces, &Perc{})
+		}
+		if n.Bias {
+			perces = append(perces, n.AddBias())
+		}
+		n.Net = append(n.Net, perces)
+	}
+	for i := 0; i < n.Outs; i++ {
+		outs = append(outs, &Perc{Final: true})
+	}
+	n.Net = append(n.Net, outs)
+	return n.InitWeight()
 }
 
 func (n *NetPerc) CreateNet(data []DataTeach, iteration int) *NetPerc {
@@ -255,8 +285,6 @@ func (p *Perc) activationWithOutAct() {
 }
 
 func (n *NetPerc) forwardPass() {
-	//mtx.Lock()
-	//defer mtx.Unlock()
 	for il, layer := range n.Net {
 		for _, perc := range layer {
 			if len(n.Net)-1 == il {
@@ -444,6 +472,7 @@ func (n *NetPerc) PredictClear(data []float64) []float64 {
 			response = append(response, toFixed(perc.Value, 3))
 		} else {
 			response = append(response, roundFl(perc.Value))
+			//response = append(response, toFixed(perc.Value, 3))
 		}
 	}
 	return response
@@ -639,7 +668,7 @@ func (n *NetPerc) Copy() *NetPerc {
 	if err := json.Unmarshal(bts, &nn); err != nil {
 		log.Fatal(err)
 	}
-	nn.Error = 0
+	nn.Error = 1
 	nn.ErrorArr = []float64{}
 	nn.Result = Result{}
 	return &nn
