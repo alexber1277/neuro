@@ -471,7 +471,7 @@ func (n *NetPerc) PredictClear(data []float64) []float64 {
 		if n.Regress {
 			response = append(response, toFixed(perc.Value, 3))
 		} else {
-			response = append(response, roundFl(perc.Value))
+			response = append(response, roundFl(toFixed(perc.Value, 3)))
 			//response = append(response, toFixed(perc.Value, 3))
 		}
 	}

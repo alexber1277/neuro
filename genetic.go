@@ -11,6 +11,8 @@ type Genetic struct {
 	Config  GeneticConf `json:"conf"`
 	Percent float64     `json:"percent"`
 	Error   float64     `json:"error"`
+	Score   float64     `json:"score"`
+	Iters   int         `json:"iters"`
 }
 
 type GeneticConf struct {
@@ -61,9 +63,13 @@ func (g *Genetic) AddNet(net *NetPerc) *Genetic {
 	return g
 }
 
+func (g *Genetic) ClearScore() {
+	g.Score = 0
+}
+
 func (g *Genetic) sortBest() *Genetic {
 	sort.Slice(g.Nets, func(i, j int) bool {
-		return g.Nets[i].Error < g.Nets[j].Error
+		return g.Nets[i].Score > g.Nets[j].Score
 	})
 	return g
 }
@@ -82,6 +88,7 @@ func (g *Genetic) TrainItem(ret func(n *NetPerc)) {
 		wg.Add(1)
 		go func(ind int) {
 			defer wg.Done()
+			g.Nets[ind].Score = 0
 			ret(g.Nets[ind])
 		}(i)
 	}
@@ -102,12 +109,34 @@ func (g *Genetic) Train(last bool) {
 	g.sortBest()
 	g.sliceBest()
 
-	g.Percent = g.GetBest().Result.Percent
-	g.Error = g.GetBest().Error
-
 	if !last {
 		g.mutate()
 	}
+
+	g.Score = g.GetBest().Score
+}
+
+func (g *Genetic) CheckScore() bool {
+	return g.Score >= g.Config.BestResult
+}
+
+func (g *Genetic) LogScore(i int) {
+	if g.Iters%i == 0 {
+		log.Println(g.Iters, " - iter; ", g.Score, " - score")
+	}
+}
+
+func (g *Genetic) Iterate() bool {
+	g.sortBest()
+	g.sliceBest()
+	g.Score = g.GetBest().Score
+	if g.CheckScore() {
+		return true
+	}
+	g.mutate()
+	g.Iters += 1
+	return false
+
 }
 
 func (g *Genetic) sliceBest() {
@@ -117,6 +146,7 @@ func (g *Genetic) sliceBest() {
 func (g *Genetic) mutate() {
 	var (
 		wg          sync.WaitGroup
+		mtWait      sync.Mutex
 		listNetsAdd []*NetPerc
 	)
 	ind := len(g.Nets) - 1
@@ -129,13 +159,16 @@ func (g *Genetic) mutate() {
 			var wgw sync.WaitGroup
 			for i := 0; i < g.Config.LimitMutateSub; i++ {
 				wgw.Add(1)
-				go func() {
+				go func(nn *NetPerc) {
 					wgw.Done()
-					n.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
-				}()
+					nn.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
+				}(n)
 			}
 			wgw.Wait()
+			mtWait.Lock()
 			listNetsAdd = append(listNetsAdd, n)
+			mtWait.Unlock()
+
 		}()
 	}
 	wg.Wait()
