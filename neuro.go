@@ -29,6 +29,7 @@ type Perc struct {
 type DataTeach struct {
 	Inputs  []float64 `json:"inputs"`
 	Outputs []float64 `json:"outputs"`
+	Price   float64   `json:"price"`
 }
 
 type Result struct {
@@ -50,6 +51,8 @@ type NetPerc struct {
 	Bias        bool        `json:"bias"`
 	FinalAct    bool        `json:"final_act"`
 	Regress     bool        `json:"regress"`
+	Budget      float64     `json:"budget"`
+	StatusBSell bool        `json:"status_buy_sell"`
 	ErrorArr    []float64   `json:"error_arr"`
 	RandWeights []float64   `json:"random_waights"`
 	Data        []DataTeach `json:"data"`
@@ -154,6 +157,24 @@ func (n *NetPerc) AddBias() *Perc {
 	return &Perc{
 		Value: 1,
 		Bias:  true,
+	}
+}
+
+func (n *NetPerc) Operate(rsp []float64, dt DataTeach) {
+	if rsp[0] == 1 {
+		return
+	}
+	if rsp[1] == 1 {
+		if !n.StatusBSell {
+			n.Budget -= dt.Price
+			n.StatusBSell = true
+		}
+	}
+	if rsp[2] == 1 {
+		if n.StatusBSell {
+			n.Budget += dt.Price
+			n.StatusBSell = false
+		}
 	}
 }
 

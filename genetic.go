@@ -4,6 +4,7 @@ import (
 	"log"
 	"sort"
 	"sync"
+	"time"
 )
 
 type Genetic struct {
@@ -13,6 +14,7 @@ type Genetic struct {
 	Error   float64     `json:"error"`
 	Score   float64     `json:"score"`
 	Iters   int         `json:"iters"`
+	Tm      time.Time   `json:"tm"`
 }
 
 type GeneticConf struct {
@@ -22,6 +24,7 @@ type GeneticConf struct {
 	MaxRandWeight  float64      `json:"max_weight"`
 	BestResult     float64      `json:"best_result"`
 	LimitMutateSub int          `json:"limit_mutate_sub"`
+	Budget         float64      `json:"budget"`
 	Data           []*DataTeach `json:"data"`
 }
 
@@ -32,15 +35,21 @@ var defaultConf = GeneticConf{
 	MaxRandWeight:  100,
 	LimitMutateSub: 100,
 	BestResult:     0.001,
+	Budget:         1000,
 }
 
 func InitGenetic(conf ...GeneticConf) *Genetic {
 	g := &Genetic{Config: defaultConf}
+	g.Tm = time.Now()
 	if len(conf) != 0 {
 		g.Config = conf[0]
 	}
 	g.Error = 1
 	return g
+}
+
+func (g *Genetic) GetTm() string {
+	return time.Now().Sub(g.Tm).String()
 }
 
 func (g *Genetic) GetBest() *NetPerc {
@@ -59,6 +68,7 @@ func (g *Genetic) SetData(data []*DataTeach) *Genetic {
 }
 
 func (g *Genetic) AddNet(net *NetPerc) *Genetic {
+	net.Budget = g.Config.Budget
 	g.Nets = append(g.Nets, net)
 	return g
 }
@@ -69,7 +79,7 @@ func (g *Genetic) ClearScore() {
 
 func (g *Genetic) sortBest() *Genetic {
 	sort.Slice(g.Nets, func(i, j int) bool {
-		return g.Nets[i].Score > g.Nets[j].Score
+		return g.Nets[i].Budget > g.Nets[j].Budget
 	})
 	return g
 }
@@ -89,6 +99,8 @@ func (g *Genetic) TrainItem(ret func(n *NetPerc)) {
 		go func(ind int) {
 			defer wg.Done()
 			g.Nets[ind].Score = 0
+			g.Nets[ind].Budget = g.Config.Budget
+			g.Nets[ind].StatusBSell = false
 			ret(g.Nets[ind])
 		}(i)
 	}
@@ -122,17 +134,17 @@ func (g *Genetic) CheckScore() bool {
 
 func (g *Genetic) LogScore(i int) {
 	if g.Iters%i == 0 {
-		log.Println(g.Iters, " - iter; ", g.Score, " - score")
+		log.Println(g.Iters, " - iter; ", toFixed(g.Score, 3), " - budget")
 	}
 }
 
 func (g *Genetic) Iterate() bool {
 	g.sortBest()
 	g.sliceBest()
-	g.Score = g.GetBest().Score
-	if g.CheckScore() {
-		return true
-	}
+	g.Score = g.GetBest().Budget
+	// if g.CheckScore() {
+	// 	return true
+	// }
 	g.mutate()
 	g.Iters += 1
 	return false
