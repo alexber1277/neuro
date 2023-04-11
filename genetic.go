@@ -1,6 +1,9 @@
 package neuro
 
 import (
+	"encoding/json"
+	"errors"
+	"io/ioutil"
 	"log"
 	"sort"
 	"sync"
@@ -78,8 +81,24 @@ func (g *Genetic) ClearScore() {
 }
 
 func (g *Genetic) sortBest() *Genetic {
+	var listNets []*NetPerc
+	for _, n := range g.Nets {
+		if n.Nols == 0 {
+			n.Score = float64(n.Trades) * n.Budget
+			listNets = append(listNets, n)
+		}
+	}
+	println(len(listNets), "<<<")
+	g.Nets = listNets
 	sort.Slice(g.Nets, func(i, j int) bool {
-		return g.Nets[i].Budget > g.Nets[j].Budget
+		return g.Nets[i].Score > g.Nets[j].Score
+	})
+	return g
+}
+
+func (g *Genetic) sortBestNols() *Genetic {
+	sort.Slice(g.Nets, func(i, j int) bool {
+		return g.Nets[i].Nols < g.Nets[j].Nols
 	})
 	return g
 }
@@ -98,6 +117,8 @@ func (g *Genetic) TrainItem(ret func(n *NetPerc)) {
 		wg.Add(1)
 		go func(ind int) {
 			defer wg.Done()
+			g.Nets[ind].Trades = 0
+			g.Nets[ind].Nols = 0
 			g.Nets[ind].Score = 0
 			g.Nets[ind].Budget = g.Config.Budget
 			g.Nets[ind].StatusBSell = false
@@ -134,8 +155,25 @@ func (g *Genetic) CheckScore() bool {
 
 func (g *Genetic) LogScore(i int) {
 	if g.Iters%i == 0 {
-		log.Println(g.Iters, " - iter; ", toFixed(g.Score, 3), " - budget")
+		log.Println(
+			g.Iters, " - iter; ",
+			"MAX:", toFixed(g.Nets[0].Budget, 3),
+			"MIN:", toFixed(g.Nets[len(g.Nets)-1].Budget, 3), "; ",
+			"len:", len(g.Nets), "; ",
+			"score:", toFixed(g.GetBest().Score, 3), "; ",
+			"trades:", g.GetBest().Trades,
+		)
 	}
+}
+
+func (g *Genetic) LogScoreNols(i int) {
+	if g.Iters%i == 0 {
+		log.Println(g.Iters, " - iter; ", g.Nets[0].Nols, " - nols")
+	}
+}
+
+func (g *Genetic) sortBestNolsIters() {
+
 }
 
 func (g *Genetic) Iterate() bool {
@@ -149,6 +187,23 @@ func (g *Genetic) Iterate() bool {
 	g.Iters += 1
 	return false
 
+}
+
+func (g *Genetic) IterateNols(lastNols int) bool {
+	g.sortBestNols()
+	g.sliceBest()
+	var stats int
+	for i := 0; i < lastNols; i++ {
+		if g.Nets[i].Nols == 0 {
+			stats += 1
+		}
+	}
+	if stats == lastNols {
+		return true
+	}
+	g.Iters += 1
+	g.mutate()
+	return false
 }
 
 func (g *Genetic) sliceBest() {
@@ -185,4 +240,35 @@ func (g *Genetic) mutate() {
 	}
 	wg.Wait()
 	g.Nets = append(g.Nets, listNetsAdd...)
+}
+
+func (g *Genetic) Save(fileName string) error {
+	if fileName == "" {
+		return errors.New("empty filename")
+	}
+	if bts, err := json.Marshal(g); err != nil {
+		return err
+	} else {
+		if err := ioutil.WriteFile(fileName, bts, 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *Genetic) Load(fileName string) bool {
+	if fileName == "" {
+		log.Println("empty filename")
+		return false
+	}
+	bts, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	if err := json.Unmarshal(bts, &g); err != nil {
+		log.Println(err)
+		return false
+	}
+	return true
 }

@@ -58,6 +58,8 @@ type NetPerc struct {
 	Data        []DataTeach `json:"data"`
 	Net         [][]*Perc   `json:"net"`
 	Score       float64     `json:"score"`
+	Nols        int         `json:"nols"`
+	Trades      int         `json:"trades"`
 }
 
 var mtx sync.Mutex
@@ -168,11 +170,13 @@ func (n *NetPerc) Operate(rsp []float64, dt DataTeach) {
 		if !n.StatusBSell {
 			n.Budget -= dt.Price
 			n.StatusBSell = true
+			n.Trades += 1
 		}
 	}
 	if rsp[2] == 1 {
 		if n.StatusBSell {
 			n.Budget += dt.Price
+			n.Trades += 1
 			n.StatusBSell = false
 		}
 	}
