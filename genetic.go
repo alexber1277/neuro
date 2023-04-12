@@ -3,6 +3,7 @@ package neuro
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"sort"
@@ -81,16 +82,9 @@ func (g *Genetic) ClearScore() {
 }
 
 func (g *Genetic) sortBest() *Genetic {
-	var listNets []*NetPerc
-	for _, n := range g.Nets {
-		if n.Nols == 0 {
-			n.Score = float64(n.Trades) * n.Budget
-			listNets = append(listNets, n)
-		}
-	}
-	println(len(listNets), "<<<")
-	g.Nets = listNets
 	sort.Slice(g.Nets, func(i, j int) bool {
+		g.Nets[i].Score = float64(g.Nets[i].Trades) * g.Nets[i].Budget / 10000
+		g.Nets[j].Score = float64(g.Nets[j].Trades) * g.Nets[j].Budget / 10000
 		return g.Nets[i].Score > g.Nets[j].Score
 	})
 	return g
@@ -160,7 +154,7 @@ func (g *Genetic) LogScore(i int) {
 			"MAX:", toFixed(g.Nets[0].Budget, 3),
 			"MIN:", toFixed(g.Nets[len(g.Nets)-1].Budget, 3), "; ",
 			"len:", len(g.Nets), "; ",
-			"score:", toFixed(g.GetBest().Score, 3), "; ",
+			"score:", fmt.Sprintf("%.3f", g.GetBest().Score), "; ",
 			"trades:", g.GetBest().Trades,
 		)
 	}

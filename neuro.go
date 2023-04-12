@@ -170,7 +170,7 @@ func (n *NetPerc) Operate(rsp []float64, dt DataTeach) {
 		if !n.StatusBSell {
 			n.Budget -= dt.Price
 			n.StatusBSell = true
-			n.Trades += 1
+			//n.Trades += 1
 		}
 	}
 	if rsp[2] == 1 {
@@ -496,11 +496,26 @@ func (n *NetPerc) PredictClear(data []float64) []float64 {
 		if n.Regress {
 			response = append(response, toFixed(perc.Value, 3))
 		} else {
-			response = append(response, roundFl(toFixed(perc.Value, 3)))
-			//response = append(response, toFixed(perc.Value, 3))
+			//response = append(response, roundFl(toFixed(perc.Value, 3)))
+			response = append(response, perc.Value)
 		}
 	}
-	return response
+
+	return sortedFls(response)
+}
+
+func sortedFls(fls []float64) []float64 {
+	var max float64
+	var maxI int
+	for i, fl := range fls {
+		if fl > max {
+			max = fl
+			maxI = i
+		}
+	}
+	flRet := make([]float64, len(fls))
+	flRet[maxI] = 1
+	return flRet
 }
 
 func (n *NetPerc) clearData() {
