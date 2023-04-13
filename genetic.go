@@ -83,9 +83,9 @@ func (g *Genetic) ClearScore() {
 
 func (g *Genetic) sortBest() *Genetic {
 	sort.Slice(g.Nets, func(i, j int) bool {
-		g.Nets[i].Score = float64(g.Nets[i].Trades) * g.Nets[i].Budget / 10000
-		g.Nets[j].Score = float64(g.Nets[j].Trades) * g.Nets[j].Budget / 10000
-		return g.Nets[i].Score > g.Nets[j].Score
+		g.Nets[i].Score = g.Nets[i].Budget
+		g.Nets[j].Score = g.Nets[j].Budget
+		return g.Nets[i].Budget > g.Nets[j].Budget
 	})
 	return g
 }
