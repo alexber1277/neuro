@@ -211,17 +211,17 @@ func (g *Genetic) mutate() {
 		listNetsAdd []*NetPerc
 	)
 	ind := len(g.Nets) - 1
-	for s := ind; s <= g.Config.Population; s++ {
+	for s := ind; s < g.Config.Population; s++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r := randInt(len(g.Nets) - 1)
+			r := randIntMin(1, ind)
 			n := g.Nets[r].Copy()
 			var wgw sync.WaitGroup
 			for i := 0; i < g.Config.LimitMutateSub; i++ {
 				wgw.Add(1)
 				go func(nn *NetPerc) {
-					wgw.Done()
+					defer wgw.Done()
 					nn.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
 				}(n)
 			}
