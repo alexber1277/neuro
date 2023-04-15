@@ -47,11 +47,13 @@ type NetPerc struct {
 	CurrInd     int         `json:"curr_ind"`
 	Error       float64     `json:"error"`
 	LearnRate   float64     `json:"learn_rate"`
+	LastPrice   float64     `json:"last_price"`
 	Result      Result      `json:"result"`
 	Bias        bool        `json:"bias"`
 	FinalAct    bool        `json:"final_act"`
 	Regress     bool        `json:"regress"`
 	Budget      float64     `json:"budget"`
+	DiffPerce   float64     `json:"diff_perce"`
 	StatusBSell bool        `json:"status_buy_sell"`
 	ErrorArr    []float64   `json:"error_arr"`
 	RandWeights []float64   `json:"random_waights"`
@@ -170,14 +172,17 @@ func (n *NetPerc) Operate(rsp []float64, dt DataTeach) {
 		if !n.StatusBSell {
 			n.Budget -= dt.Price
 			n.StatusBSell = true
-			//n.Trades += 1
+			n.LastPrice = dt.Price
 		}
 	}
 	if rsp[2] == 1 {
 		if n.StatusBSell {
-			n.Budget += dt.Price
-			n.Trades += 1
-			n.StatusBSell = false
+			if getDiff(dt.Price, n.LastPrice) > 1 {
+				n.DiffPerce += dt.Price - n.LastPrice
+				n.Budget += dt.Price
+				n.Trades += 1
+				n.StatusBSell = false
+			}
 		}
 	}
 }
@@ -681,6 +686,9 @@ func randIntMin(min, max int) int {
 		return min
 	}
 	if min == 0 && max == 0 {
+		return 0
+	}
+	if min == 0 && max == 1 {
 		return 0
 	}
 	return rand.Intn(max-min) + min

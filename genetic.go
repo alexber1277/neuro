@@ -83,9 +83,9 @@ func (g *Genetic) ClearScore() {
 
 func (g *Genetic) sortBest() *Genetic {
 	sort.Slice(g.Nets, func(i, j int) bool {
-		g.Nets[i].Score = g.Nets[i].Budget
-		g.Nets[j].Score = g.Nets[j].Budget
-		return g.Nets[i].Budget > g.Nets[j].Budget
+		g.Nets[i].Score = g.Nets[i].DiffPerce * float64(g.Nets[i].Trades)
+		g.Nets[j].Score = g.Nets[j].DiffPerce * float64(g.Nets[j].Trades)
+		return g.Nets[i].Score > g.Nets[j].Score
 	})
 	return g
 }
@@ -115,6 +115,8 @@ func (g *Genetic) TrainItem(ret func(n *NetPerc)) {
 			g.Nets[ind].Nols = 0
 			g.Nets[ind].Score = 0
 			g.Nets[ind].Budget = g.Config.Budget
+			g.Nets[ind].LastPrice = 0
+			g.Nets[ind].DiffPerce = 0
 			g.Nets[ind].StatusBSell = false
 			ret(g.Nets[ind])
 		}(i)
@@ -155,7 +157,8 @@ func (g *Genetic) LogScore(i int) {
 			"MIN:", toFixed(g.Nets[len(g.Nets)-1].Budget, 3), "; ",
 			"len:", len(g.Nets), "; ",
 			"score:", fmt.Sprintf("%.3f", g.GetBest().Score), "; ",
-			"trades:", g.GetBest().Trades,
+			"trades:", g.GetBest().Trades, "; ",
+			"diff:", toFixed(g.GetBest().DiffPerce, 3),
 		)
 	}
 }
@@ -174,9 +177,6 @@ func (g *Genetic) Iterate() bool {
 	g.sortBest()
 	g.sliceBest()
 	g.Score = g.GetBest().Budget
-	// if g.CheckScore() {
-	// 	return true
-	// }
 	g.mutate()
 	g.Iters += 1
 	return false
@@ -201,7 +201,9 @@ func (g *Genetic) IterateNols(lastNols int) bool {
 }
 
 func (g *Genetic) sliceBest() {
-	g.Nets = g.Nets[:g.Config.LastBest]
+	if len(g.Nets) > g.Config.LastBest {
+		g.Nets = g.Nets[:g.Config.LastBest]
+	}
 }
 
 func (g *Genetic) mutate() {
@@ -211,26 +213,49 @@ func (g *Genetic) mutate() {
 		listNetsAdd []*NetPerc
 	)
 	ind := len(g.Nets) - 1
-	for s := ind; s < g.Config.Population; s++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			r := randIntMin(1, ind)
-			n := g.Nets[r].Copy()
-			var wgw sync.WaitGroup
-			for i := 0; i < g.Config.LimitMutateSub; i++ {
-				wgw.Add(1)
-				go func(nn *NetPerc) {
-					defer wgw.Done()
-					nn.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
-				}(n)
-			}
-			wgw.Wait()
-			mtWait.Lock()
-			listNetsAdd = append(listNetsAdd, n)
-			mtWait.Unlock()
+	if ind == 0 {
+		for s := ind; s < g.Config.Population; s++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				n := g.Nets[0].Copy()
+				var wgw sync.WaitGroup
+				for i := 0; i < g.Config.LimitMutateSub; i++ {
+					wgw.Add(1)
+					go func(nn *NetPerc) {
+						defer wgw.Done()
+						nn.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
+					}(n)
+				}
+				wgw.Wait()
+				mtWait.Lock()
+				listNetsAdd = append(listNetsAdd, n)
+				mtWait.Unlock()
 
-		}()
+			}()
+		}
+	} else {
+		for s := ind; s < g.Config.Population; s++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				r := randIntMin(1, ind)
+				n := g.Nets[r].Copy()
+				var wgw sync.WaitGroup
+				for i := 0; i < g.Config.LimitMutateSub; i++ {
+					wgw.Add(1)
+					go func(nn *NetPerc) {
+						defer wgw.Done()
+						nn.mutateWeight(g.Config.MinRandWeight, g.Config.MaxRandWeight)
+					}(n)
+				}
+				wgw.Wait()
+				mtWait.Lock()
+				listNetsAdd = append(listNetsAdd, n)
+				mtWait.Unlock()
+
+			}()
+		}
 	}
 	wg.Wait()
 	g.Nets = append(g.Nets, listNetsAdd...)
