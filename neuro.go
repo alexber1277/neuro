@@ -30,6 +30,7 @@ type DataTeach struct {
 	Inputs  []float64 `json:"inputs"`
 	Outputs []float64 `json:"outputs"`
 	Price   float64   `json:"price"`
+	BuySell int       `json:"buy_sell"`
 }
 
 type Result struct {
@@ -102,6 +103,9 @@ func (n *NetPerc) CreateNetGraph(data []DataTeach, out int) *NetPerc {
 	n.Inps = len(data[0].Inputs)
 	n.Outs = out
 	n.SetDataAll(data)
+	n.SetFinAct(false)
+	n.SetBias(false)
+	n.SetRegress(true)
 	var inps, outs []*Perc
 	for i := 0; i < n.Inps; i++ {
 		inps = append(inps, &Perc{Start: true})
@@ -170,19 +174,17 @@ func (n *NetPerc) Operate(rsp []float64, dt DataTeach) {
 	}
 	if rsp[1] == 1 {
 		if !n.StatusBSell {
-			n.Budget -= dt.Price
+			n.Budget = n.Budget - dt.Price
 			n.StatusBSell = true
 			n.LastPrice = dt.Price
 		}
 	}
 	if rsp[2] == 1 {
 		if n.StatusBSell {
-			if getDiff(dt.Price, n.LastPrice) > 1 {
-				n.DiffPerce += dt.Price - n.LastPrice
-				n.Budget += dt.Price
-				n.Trades += 1
-				n.StatusBSell = false
-			}
+			n.DiffPerce += dt.Price - n.LastPrice
+			n.Budget = n.Budget + dt.Price
+			n.Trades = n.Trades + 1
+			n.StatusBSell = false
 		}
 	}
 }
@@ -505,16 +507,15 @@ func (n *NetPerc) PredictClear(data []float64) []float64 {
 			response = append(response, perc.Value)
 		}
 	}
-
 	return sortedFls(response)
 }
 
 func sortedFls(fls []float64) []float64 {
 	var max float64
 	var maxI int
-	for i, fl := range fls {
-		if fl > max {
-			max = fl
+	for i := len(fls) - 1; i >= 0; i-- {
+		if fls[i] > max {
+			max = fls[i]
 			maxI = i
 		}
 	}
@@ -682,8 +683,20 @@ func randInt(max int) int {
 }
 
 func randIntMin(min, max int) int {
+	defer func() {
+		if msg := recover(); msg != nil {
+			fmt.Println(min, max)
+			debug(msg)
+		}
+	}()
+	if min > max {
+		return min
+	}
 	if min == max {
 		return min
+	}
+	if max < 0 {
+		return 0
 	}
 	if min == 0 && max == 0 {
 		return 0
@@ -691,10 +704,17 @@ func randIntMin(min, max int) int {
 	if min == 0 && max == 1 {
 		return 0
 	}
+	if max-min == 0 {
+		return 0
+	}
 	return rand.Intn(max-min) + min
 }
 
 func getDiff(newPrice, oldPrice float64) float64 {
+	return toFixed(((newPrice - oldPrice) / ((newPrice + oldPrice) / 2) * 100), 3)
+}
+
+func Diff(newPrice, oldPrice float64) float64 {
 	return toFixed(((newPrice - oldPrice) / ((newPrice + oldPrice) / 2) * 100), 3)
 }
 
