@@ -22,7 +22,7 @@ type Genetic struct {
 	Error     float64     `json:"error"`
 	Score     float64     `json:"score"`
 	Iters     int         `json:"iters"`
-	LBOitem   LBO         `json:"lbo_item"`
+	LBOitem   *LBO        `json:"lbo_item"`
 	Tm        time.Time   `json:"tm"`
 }
 
@@ -64,6 +64,7 @@ type ResOrder struct {
 	Type   bool    `json:"type"`
 	Sum    float64 `json:"sum"`
 	Score  float64 `json:"score"`
+	Diff   float64 `json:"diff"`
 	Trades []int   `json:"trades"`
 }
 
@@ -86,8 +87,21 @@ func (g *Genetic) GenerateTrades() *Genetic {
 
 func (g *Genetic) GenerateTradesV2() *Genetic {
 	for i := 0; i < g.Config.Inps; i++ {
-		g.ResOrders = append(g.ResOrders, &ResOrder{Count: i + 1, Trades: []int{}})
+		if i == 0 {
+			continue
+		}
+		if i%2 == 0 {
+			g.ResOrders = append(g.ResOrders, &ResOrder{Count: i, Trades: []int{}})
+		}
 	}
+	return g
+}
+
+func (g *Genetic) SetWorkOrders(ord *ResOrder) *Genetic {
+	g.Iters = 0
+	g.Score = 0
+	g.LBOitem = &LBO{}
+	g.ResOrders = []*ResOrder{ord}
 	return g
 }
 
@@ -100,8 +114,8 @@ func (g *Genetic) GenerateOrdersV2() *Genetic {
 	return g
 }
 
-func (g *Genetic) FirstMutate(inpData []DataTeach) *Genetic {
-	g.LBOitem = LBO{}
+func (g *Genetic) FirstMutate(inpData []DataTeach, gsfd *bool) *Genetic {
+	g.LBOitem = &LBO{Trades: []int{}}
 	for {
 		var wg sync.WaitGroup
 		wg.Add(len(g.ResOrders))
@@ -130,11 +144,16 @@ func (g *Genetic) FirstMutate(inpData []DataTeach) *Genetic {
 		if g.Score < g.GetBestOrders().Score {
 			g.LBOitem.Count = g.GetBestOrders().Count
 			g.LBOitem.Score = g.GetBestOrders().Score
-			copy(g.LBOitem.Trades, g.GetBestOrders().Trades)
+			g.LBOitem.Trades = g.GetBestOrders().Trades
 			g.Score = g.GetBestOrders().Score
 			g.LogScoreOrders(1)
+			if *gsfd {
+				break
+			}
 		} else {
-			//g.LogScoreOrders(1000)
+			if *gsfd {
+				break
+			}
 		}
 
 		g.mutateOrdersFirst()
@@ -185,6 +204,10 @@ func (g *Genetic) GetBestOrders() *ResOrder {
 	return g.ResOrders[0]
 }
 
+func (g *Genetic) GetLBO() []int {
+	return g.LBOitem.Trades
+}
+
 func (g *Genetic) Add(ret func() *NetPerc) {
 	for i := 0; i < g.Config.Population; i++ {
 		g.AddNet(ret())
@@ -219,14 +242,15 @@ func (g *Genetic) sortBestOrders() *Genetic {
 	sort.Slice(g.ResOrders, func(i, j int) bool {
 		g.ResOrders[i].Score = g.ResOrders[i].Sum
 		g.ResOrders[j].Score = g.ResOrders[j].Sum
-		// ============================
-		//g.ResOrders[i].Score = float64(g.ResOrders[i].Count) / g.ResOrders[i].Sum
-		//g.ResOrders[j].Score = float64(g.ResOrders[j].Count) / g.ResOrders[j].Sum
-		// ============================
-		//g.ResOrders[i].Score = (g.ResOrders[i].Sum / 10000) / (float64(g.ResOrders[i].Count) * 0.9)
-		//g.ResOrders[j].Score = (g.ResOrders[j].Sum / 10000) / (float64(g.ResOrders[j].Count) * 0.9)
 		return g.ResOrders[i].Score > g.ResOrders[j].Score
 	})
+	return g
+}
+
+func (g *Genetic) AddPopulations() *Genetic {
+	for i := 0; i < g.Config.Population; i++ {
+		g.ResOrders = append(g.ResOrders, g.ResOrders[0].copyAndMutate(g.Config.Inps))
+	}
 	return g
 }
 
@@ -251,6 +275,7 @@ func (g *Genetic) TrainItemOrders(ret func(r *ResOrder)) {
 		wg.Add(1)
 		go func(ind int) {
 			defer wg.Done()
+			g.ResOrders[ind].Diff = 0
 			g.ResOrders[ind].Score = 0
 			g.ResOrders[ind].Sum = g.Config.Budget
 			ret(g.ResOrders[ind])
@@ -324,7 +349,7 @@ func (g *Genetic) LogScoreOrders(i int) {
 			"SCORE:", g.GetBestOrders().Score, "; ",
 			"COUNT:", g.GetBestOrders().Count, "; ",
 			"SUM:", g.GetBestOrders().Sum, "; ",
-			"BY:", g.GetBestOrders().By, "; ",
+			"DIFF:", fmt.Sprintf("%.2f", g.GetBestOrders().Diff), "; ",
 			"LENGTH:", len(g.ResOrders), "; ",
 		)
 	}
@@ -354,7 +379,7 @@ func (g *Genetic) IterateOrders() {
 	g.sortBestOrders()
 	g.sliceBestOrders()
 	g.Score = g.GetBestOrders().Sum
-	g.mutateOrders()
+	g.mutateOrdersV3()
 	g.Iters += 1
 }
 
@@ -495,6 +520,30 @@ func (g *Genetic) mutateV2() {
 	g.Nets = append(g.Nets, listNetsAdd...)
 }
 
+func (g *Genetic) mutateOrdersV3() {
+	wg := sync.WaitGroup{}
+	for i, res := range g.ResOrders {
+		if i == 0 {
+			continue
+		}
+		wg.Add(1)
+		go func(resItem *ResOrder) {
+			defer wg.Done()
+			resItem.mutateV3(g.Config.Inps)
+		}(res)
+	}
+	wg.Wait()
+	var exst, s int = len(g.ResOrders), 0
+	var trsNew []*ResOrder
+	for i := exst; i < g.Config.Population; i++ {
+		trsNew = append(trsNew, g.ResOrders[s].copyAndMutate(g.Config.Inps))
+		if s >= len(g.ResOrders)-1 {
+			s = 0
+		}
+	}
+	g.ResOrders = append(g.ResOrders, trsNew...)
+}
+
 func (g *Genetic) mutateOrders() {
 	var (
 		wg         sync.WaitGroup
@@ -559,6 +608,37 @@ func (r *ResOrder) mutateAll(max int) {
 	r.Trades = trds
 }
 
+func (r *ResOrder) copyAndMutate(maxVal int) *ResOrder {
+	var res *ResOrder
+	bts, err := json.Marshal(r)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := json.Unmarshal(bts, &res); err != nil {
+		log.Fatal(err)
+	}
+	return res.mutateV3(maxVal)
+}
+
+func (r *ResOrder) mutateV3(maxVal int) *ResOrder {
+	rnd := funk.RandomInt(0, len(r.Trades))
+	var nVal int
+	switch rnd {
+	case 0:
+		nVal = funk.RandomInt(0, r.Trades[1])
+	case len(r.Trades) - 1:
+		nVal = funk.RandomInt(r.Trades[len(r.Trades)-2], maxVal)
+	default:
+		if r.Trades[rnd-1]+1 < r.Trades[rnd+1] {
+			nVal = funk.RandomInt(r.Trades[rnd-1]+1, r.Trades[rnd+1])
+		} else {
+			nVal = r.Trades[rnd-1] + 1
+		}
+	}
+	r.Trades[rnd] = nVal
+	return r
+}
+
 func (r *ResOrder) mutate() {
 	var nVal int
 	rand := randIntMin(0, len(r.Trades)-1)
@@ -586,8 +666,19 @@ func (g *Genetic) mutateOrdersFirst() {
 	for _, ord := range g.ResOrders {
 		func(ordItem *ResOrder) {
 			defer wg.Done()
-			ordItem.mutateAll(g.Config.Inps)
+			ordItem.mutateV3(g.Config.Inps)
 		}(ord)
 	}
 	wg.Wait()
+
+	/*
+		var ind, n int = len(g.ResOrders) - 1, 0
+		for i := ind; i < g.Config.Population; i++ {
+			g.ResOrders = append(g.ResOrders, g.ResOrders[n].copyAndMutate(g.Config.Inps))
+			if n <= ind {
+				n += 1
+			}
+		}
+	*/
+
 }
