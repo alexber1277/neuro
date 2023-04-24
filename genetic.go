@@ -29,14 +29,16 @@ type Genetic struct {
 type GeneticConf struct {
 	Population     int          `json:"population"`
 	LastBest       int          `json:"last_best"`
+	LimitMutateSub int          `json:"limit_mutate_sub"`
+	Inps           int          `json:"inps"`
+	NewItems       int          `json:"new_items"`
+	PercByHours    int          `json:"perc_by_hours"`
+	DiffShift      int          `json:"diff_shift"`
 	MinRandWeight  float64      `json:"min_weight"`
 	MaxRandWeight  float64      `json:"max_weight"`
 	BestResult     float64      `json:"best_result"`
-	LimitMutateSub int          `json:"limit_mutate_sub"`
 	Budget         float64      `json:"budget"`
 	TradesByDay    float64      `json:"trades_by_day"`
-	Inps           int          `json:"inps"`
-	NewItems       int          `json:"new_items"`
 	Hours          float64      `json:"hours"`
 	MinPerce       float64      `json:"min_perce"`
 	Data           []*DataTeach `json:"data"`
@@ -55,7 +57,9 @@ var defaultConf = GeneticConf{
 	MaxRandWeight:  100,
 	LimitMutateSub: 100,
 	BestResult:     0.001,
+	PercByHours:    10,
 	Budget:         1000,
+	DiffShift:      2,
 }
 
 type ResOrder struct {
@@ -86,7 +90,11 @@ func (g *Genetic) GenerateTrades() *Genetic {
 }
 
 func (g *Genetic) GenerateTradesV2() *Genetic {
-	for i := 0; i < g.Config.Inps; i++ {
+	allCount := int(g.Config.Inps / 100 * g.Config.PercByHours)
+	diffCount := int(g.Config.Inps / 100 * g.Config.DiffShift)
+	min := allCount - diffCount
+	max := allCount + diffCount
+	for i := min; i <= max; i++ {
 		if i == 0 {
 			continue
 		}
@@ -146,11 +154,12 @@ func (g *Genetic) FirstMutate(inpData []DataTeach, gsfd *bool) *Genetic {
 			g.LBOitem.Score = g.GetBestOrders().Score
 			g.LBOitem.Trades = g.GetBestOrders().Trades
 			g.Score = g.GetBestOrders().Score
-			g.LogScoreOrders(1)
+			g.LogScoreOrders(1, " !!! BEST !!! ")
 			if *gsfd {
 				break
 			}
 		} else {
+			//g.LogScoreOrders(1, " !!! TIME !!! ")
 			if *gsfd {
 				break
 			}
@@ -342,10 +351,15 @@ func (g *Genetic) LogScore(i int) {
 	}
 }
 
-func (g *Genetic) LogScoreOrders(i int) {
+func (g *Genetic) LogScoreOrders(i int, str ...string) {
 	if g.Iters%i == 0 {
+		var stItem string
+		if len(str) > 0 {
+			stItem = str[0]
+		}
 		log.Println(
 			g.Iters, " - iter; ",
+			stItem+"; ",
 			"SCORE:", g.GetBestOrders().Score, "; ",
 			"COUNT:", g.GetBestOrders().Count, "; ",
 			"SUM:", g.GetBestOrders().Sum, "; ",
@@ -670,15 +684,4 @@ func (g *Genetic) mutateOrdersFirst() {
 		}(ord)
 	}
 	wg.Wait()
-
-	/*
-		var ind, n int = len(g.ResOrders) - 1, 0
-		for i := ind; i < g.Config.Population; i++ {
-			g.ResOrders = append(g.ResOrders, g.ResOrders[n].copyAndMutate(g.Config.Inps))
-			if n <= ind {
-				n += 1
-			}
-		}
-	*/
-
 }
