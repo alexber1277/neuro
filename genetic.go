@@ -128,7 +128,7 @@ func (g *Genetic) FirstMutate(inpData []DataTeach, gsfd *bool) *Genetic {
 		var wg sync.WaitGroup
 		wg.Add(len(g.ResOrders))
 		for _, ord := range g.ResOrders {
-			func(ordItem *ResOrder) {
+			go func(ordItem *ResOrder) {
 				defer wg.Done()
 				ordItem.Sum = g.Config.Budget
 				ordItem.Type = false
