@@ -34,6 +34,7 @@ type GeneticConf struct {
 	NewItems       int          `json:"new_items"`
 	PercByHours    int          `json:"perc_by_hours"`
 	DiffShift      int          `json:"diff_shift"`
+	MaxMutateIter  int          `json:"max_mutate_iter"`
 	MinRandWeight  float64      `json:"min_weight"`
 	MaxRandWeight  float64      `json:"max_weight"`
 	BestResult     float64      `json:"best_result"`
@@ -115,8 +116,14 @@ func (g *Genetic) SetWorkOrders(ord *ResOrder) *Genetic {
 
 func (g *Genetic) GenerateOrdersV2() *Genetic {
 	for _, r := range g.ResOrders {
-		for t := 0; t < r.Count; t++ {
-			r.Trades = append(r.Trades, t)
+		r.By = int(g.Config.Inps / r.Count)
+		for t := 0; t < g.Config.Inps; t++ {
+			if t == 0 {
+				continue
+			}
+			if t%r.By == 0 {
+				r.Trades = append(r.Trades, t)
+			}
 		}
 	}
 	return g
@@ -132,17 +139,17 @@ func (g *Genetic) FirstMutate(inpData []DataTeach, gsfd *bool) *Genetic {
 				defer wg.Done()
 				ordItem.Sum = g.Config.Budget
 				ordItem.Type = false
-				lastPrice := 0.0
+				//lastPrice := 0.0
 				for _, pr := range ordItem.Trades {
 					if !ordItem.Type {
 						ordItem.Sum -= inpData[pr].Price
 						ordItem.Type = true
-						lastPrice = inpData[pr].Price
+						//lastPrice = inpData[pr].Price
 					} else {
-						if getDiff(inpData[pr].Price, lastPrice) > g.Config.MinPerce {
-							ordItem.Sum += inpData[pr].Price
-							ordItem.Type = false
-						}
+						//if getDiff(inpData[pr].Price, lastPrice) > g.Config.MinPerce {
+						ordItem.Sum += inpData[pr].Price
+						ordItem.Type = false
+						//}
 					}
 				}
 			}(ord)
@@ -155,18 +162,18 @@ func (g *Genetic) FirstMutate(inpData []DataTeach, gsfd *bool) *Genetic {
 			g.LBOitem.Trades = g.GetBestOrders().Trades
 			g.Score = g.GetBestOrders().Score
 			g.LogScoreOrders(1, " !!! BEST !!! ")
-			if *gsfd {
-				break
-			}
 		} else {
-			//g.LogScoreOrders(1, " !!! TIME !!! ")
-			if *gsfd {
-				break
-			}
+			g.LogScoreOrders(10000, " !!! TIME !!! ")
+		}
+		if *gsfd {
+			break
 		}
 
 		g.mutateOrdersFirst()
 		g.Iters += 1
+
+		//time.Sleep(time.Second / 10)
+
 	}
 
 	return g
@@ -257,8 +264,11 @@ func (g *Genetic) sortBestOrders() *Genetic {
 }
 
 func (g *Genetic) AddPopulations() *Genetic {
+	var s int
 	for i := 0; i < g.Config.Population; i++ {
-		g.ResOrders = append(g.ResOrders, g.ResOrders[0].copyAndMutate(g.Config.Inps))
+		next := g.ResOrders[s].CopyJson()
+		g.ResOrders = append(g.ResOrders, next.mutateV3(g.Config.Inps))
+		s += 1
 	}
 	return g
 }
@@ -278,17 +288,30 @@ func (g *Genetic) showList(max ...int) {
 	}
 }
 
-func (g *Genetic) TrainItemOrders(ret func(r *ResOrder)) {
+func (g *Genetic) TrainItemOrders(inpData []DataTeach) {
 	var wg sync.WaitGroup
-	for i, _ := range g.ResOrders {
+	for _, res := range g.ResOrders {
 		wg.Add(1)
-		go func(ind int) {
+		go func(r *ResOrder) {
 			defer wg.Done()
-			g.ResOrders[ind].Diff = 0
-			g.ResOrders[ind].Score = 0
-			g.ResOrders[ind].Sum = g.Config.Budget
-			ret(g.ResOrders[ind])
-		}(i)
+			r.Diff = 0
+			r.Score = 0
+			r.Sum = g.Config.Budget
+			//lPriceBy := 0.0
+			for _, t := range r.Trades {
+				if !r.Type {
+					r.Sum -= inpData[t].Price
+					//lPriceBy = inpData[t].Price
+					r.Type = true
+				} else {
+					//if Diff(inpData[t].Price, lPriceBy) > g.Config.MinPerce {
+					r.Sum += inpData[t].Price
+					//r.Diff += inpData[t].Price - lPriceBy
+					r.Type = false
+					//}
+				}
+			}
+		}(res)
 	}
 	wg.Wait()
 }
@@ -393,8 +416,6 @@ func (g *Genetic) IterateOrders() {
 	g.sortBestOrders()
 	g.sliceBestOrders()
 	g.Score = g.GetBestOrders().Sum
-	g.mutateOrdersV3()
-	g.Iters += 1
 }
 
 func (g *Genetic) IterateNols(lastNols int) bool {
@@ -534,28 +555,14 @@ func (g *Genetic) mutateV2() {
 	g.Nets = append(g.Nets, listNetsAdd...)
 }
 
-func (g *Genetic) mutateOrdersV3() {
-	wg := sync.WaitGroup{}
-	for i, res := range g.ResOrders {
-		if i == 0 {
-			continue
+func (g *Genetic) MutateOrdersV3() {
+	for len(g.ResOrders) < g.Config.Population {
+		next := g.ResOrders[0].CopyJson()
+		for s := 0; s < g.Config.MaxMutateIter; s++ {
+			next.mutateV3(g.Config.Inps)
 		}
-		wg.Add(1)
-		go func(resItem *ResOrder) {
-			defer wg.Done()
-			resItem.mutateV3(g.Config.Inps)
-		}(res)
+		g.ResOrders = append(g.ResOrders, next)
 	}
-	wg.Wait()
-	var exst, s int = len(g.ResOrders), 0
-	var trsNew []*ResOrder
-	for i := exst; i < g.Config.Population; i++ {
-		trsNew = append(trsNew, g.ResOrders[s].copyAndMutate(g.Config.Inps))
-		if s >= len(g.ResOrders)-1 {
-			s = 0
-		}
-	}
-	g.ResOrders = append(g.ResOrders, trsNew...)
 }
 
 func (g *Genetic) mutateOrders() {
@@ -588,12 +595,20 @@ func (r *ResOrder) Copy() *ResOrder {
 	rr := ResOrder{
 		Count: r.Count,
 		By:    r.By,
-		Type:  r.Type,
+		Type:  false,
 		Sum:   r.Sum,
 		Score: r.Score,
 	}
 	rr.Trades = make([]int, len(r.Trades))
 	copy(rr.Trades, r.Trades)
+	return &rr
+}
+
+func (r *ResOrder) CopyJson() *ResOrder {
+	var rr ResOrder
+	bts, _ := json.Marshal(r)
+	json.Unmarshal(bts, &rr)
+	rr.Type = false
 	return &rr
 }
 
@@ -676,11 +691,14 @@ func (r *ResOrder) mutate() {
 
 func (g *Genetic) mutateOrdersFirst() {
 	var wg sync.WaitGroup
-	wg.Add(len(g.ResOrders))
-	for _, ord := range g.ResOrders {
-		func(ordItem *ResOrder) {
+	wg.Add(len(g.ResOrders[1:]))
+	for _, ord := range g.ResOrders[1:] {
+		go func(ordItem *ResOrder) {
 			defer wg.Done()
-			ordItem.mutateV3(g.Config.Inps)
+			ordItem.mutateAll(g.Config.Inps)
+			/*for i := 0; i < ordItem.Count; i++ {
+				ordItem.mutateV3(g.Config.Inps)
+			}*/
 		}(ord)
 	}
 	wg.Wait()
