@@ -740,52 +740,6 @@ func (n *NetPerc) Copy() *NetPerc {
 	nn.ErrorArr = []float64{}
 	nn.Result = Result{}
 	return &nn
-
-	/*
-		nn := NetPerc{}
-		nn.Layers = n.Layers
-		nn.Neurons = n.Neurons
-		nn.Inps = n.Inps
-		nn.Outs = n.Outs
-		nn.Iters = n.Iters
-		nn.CurrInd = n.CurrInd
-		nn.Error = n.Error
-		nn.LearnRate = n.LearnRate
-		nn.FinalAct = n.FinalAct
-		nn.ErrorArr = nil
-		nn.RandWeights = n.RandWeights
-
-		for i, el := range n.Data {
-			dt := DataTeach{
-				Inputs:  make([]float64, len(el.Inputs)),
-				Outputs: make([]float64, len(el.Outputs)),
-			}
-			copy(dt.Inputs, n.Data[i].Inputs)
-			copy(dt.Outputs, n.Data[i].Outputs)
-			nn.Data = append(nn.Data, dt)
-		}
-
-		for _, els := range n.Net {
-			var listPerc []*Perc
-			for _, el := range els {
-				p := Perc{
-					Error: el.Error,
-					Start: el.Start,
-					Final: el.Final,
-					Bias:  el.Bias,
-					Value: el.Value,
-				}
-				p.PreVals = make([]float64, len(el.PreVals))
-				p.Weights = make([]float64, len(el.Weights))
-				copy(p.PreVals, el.PreVals)
-				copy(p.Weights, el.Weights)
-				listPerc = append(listPerc, &p)
-			}
-			nn.Net = append(nn.Net, listPerc)
-		}
-		return &nn
-	*/
-
 }
 
 func (n *NetPerc) mutateWeight(min, max float64) {
