@@ -556,8 +556,10 @@ func (g *Genetic) mutateV2() {
 }
 
 func (g *Genetic) MutateOrdersV3() {
+	bts := g.ResOrders[0].GetBytesJson()
 	for len(g.ResOrders) < g.Config.Population {
-		next := g.ResOrders[0].CopyJson()
+		var next ResOrder
+		json.Unmarshal(bts, &next)
 		for s := 0; s < g.Config.MaxMutateIter; s++ {
 			next.mutateV3(g.Config.Inps)
 		}
@@ -610,6 +612,14 @@ func (r *ResOrder) CopyJson() *ResOrder {
 	json.Unmarshal(bts, &rr)
 	rr.Type = false
 	return &rr
+}
+
+func (r *ResOrder) GetBytesJson() []byte {
+	bts, err := json.Marshal(r)
+	if err != nil {
+		log.Println("error marshal ResOrder: ", err)
+	}
+	return bts
 }
 
 func remove(s []int, i int) []int {
