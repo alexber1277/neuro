@@ -1,4 +1,4 @@
-module neuro
+module github.com/alexber1277/neuro
 
 go 1.19
 

@@ -563,7 +563,7 @@ func (g *Genetic) MutateOrdersV3() {
 		for s := 0; s < g.Config.MaxMutateIter; s++ {
 			next.mutateV3(g.Config.Inps)
 		}
-		g.ResOrders = append(g.ResOrders, next)
+		g.ResOrders = append(g.ResOrders, &next)
 	}
 }
 
