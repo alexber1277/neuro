@@ -255,7 +255,13 @@ func (n *NetPerc) setInputs() {
 
 func (n *NetPerc) setInps(data []float64) {
 	for i, el := range n.Net[0] {
-		el.Value = data[i]
+		if !n.Bias {
+			el.Value = data[i]
+		} else {
+			if i < len(n.Net[0])-1 {
+				el.Value = data[i]
+			}
+		}
 	}
 }
 
