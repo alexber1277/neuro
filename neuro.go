@@ -758,6 +758,16 @@ func (n *NetPerc) mutateWeight(min, max float64) {
 	n.Net[layer][per].Weights[weightsLength] = randFloat(min, max)
 }
 
+func (n *NetPerc) MutateWeight(min, max float64) {
+	layer := randInt(n.Layers + 1)
+	per := randInt(len(n.Net[layer]) - 1)
+	weightsLength := 0
+	if len(n.Net[layer][per].Weights)-1 > 0 {
+		weightsLength = randInt(len(n.Net[layer][per].Weights) - 1)
+	}
+	n.Net[layer][per].Weights[weightsLength] = randFloat(min, max)
+}
+
 func debug(in interface{}) {
 	bt, err := json.Marshal(in)
 	if err != nil {
