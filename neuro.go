@@ -461,6 +461,40 @@ func (n *NetPerc) DataCopy() *NetPerc {
 	return n
 }
 
+func (n *NetPerc) TrainItersItem() *NetPerc {
+	for e := 0; e < len(n.Data); e++ {
+		// ===========================
+		n.setInputs()
+		// ===========================
+		n.forwardPass()
+		// ===========================
+		n.calcError()
+		// ===========================
+		n.backPropogation()
+		// ===========================
+		n.nextData()
+		// ===========================
+	}
+	n.calcMainErrorDataSet()
+	return n
+}
+
+func (n *NetPerc) TrainItersV2() *NetPerc {
+	for e := 0; e < len(n.Data); e++ {
+		// ===========================
+		n.setInputs()
+		// ===========================
+		n.forwardPass()
+		// ===========================
+		n.calcError()
+		// ===========================
+		n.nextData()
+		// ===========================
+	}
+	n.calcMainErrorDataSet()
+	return n
+}
+
 func (n *NetPerc) TrainIters() *NetPerc {
 	for e := 0; e < len(n.Data); e++ {
 		// ===========================
