@@ -50,7 +50,8 @@ type NetPerc struct {
 	LearnRate   float64     `json:"learn_rate"`
 	LastPrice   float64     `json:"last_price"`
 	Result      Result      `json:"result"`
-	ActRelu     bool        `json:"relu"`
+	ActFN       int         `json:"act_fn"`
+	ActFNFinal  int         `json:"act_fn_final"`
 	Bias        bool        `json:"bias"`
 	FinalAct    bool        `json:"final_act"`
 	Regress     bool        `json:"regress"`
@@ -67,6 +68,54 @@ type NetPerc struct {
 }
 
 var mtx sync.Mutex
+
+const (
+	ActivationNone     = 0
+	ActivationSigmoid  = 1
+	ActivationReLU     = 2
+	ActivationReLULeak = 3
+	ActivationTahn     = 4
+)
+
+func checkAct(act int, val float64) float64 {
+	var retVal float64
+	switch act {
+	case ActivationNone:
+		retVal = val
+	case ActivationSigmoid:
+		retVal = sigmoid(val)
+	case ActivationReLU:
+		retVal = relu(val)
+	case ActivationReLULeak:
+		retVal = reluLeaky(val)
+	case ActivationTahn:
+		retVal = tahn(val)
+	}
+	return retVal
+}
+
+func tahn(val float64) float64 {
+	return math.Tanh(val)
+}
+
+func sigmoid(val float64) float64 {
+	return 1.0 / (1.0 + math.Exp(-val))
+}
+
+func relu(val float64) float64 {
+	if val < 0 {
+		return 0
+	}
+	return val
+}
+
+func reluLeaky(val float64) float64 {
+	alpha := 0.01
+	if val < 0 {
+		return val * alpha
+	}
+	return val
+}
 
 func InitNetPerc(layer, neurons int) *NetPerc {
 	n := &NetPerc{
@@ -90,8 +139,13 @@ func (n *NetPerc) SetFinAct(act bool) *NetPerc {
 	return n
 }
 
-func (n *NetPerc) SetActRelu(status bool) *NetPerc {
-	n.ActRelu = status
+func (n *NetPerc) SetActFn(fn int) *NetPerc {
+	n.ActFN = fn
+	return n
+}
+
+func (n *NetPerc) SetFinalActFn(fn int) *NetPerc {
+	n.ActFNFinal = fn
 	return n
 }
 
@@ -346,21 +400,33 @@ func (p *Perc) activationWithOutAct() {
 	}
 }
 
+func (n *NetPerc) activationNeuron(p *Perc, finalNeuro ...bool) {
+	var tm float64
+	var fin bool
+	if len(finalNeuro) > 0 {
+		fin = finalNeuro[0]
+	}
+	for _, v := range p.PreVals {
+		tm += v
+	}
+	p.Value = tm
+	// ==============================
+	if fin { // if final neuron
+		p.Value = checkAct(n.ActFNFinal, p.Value)
+	} else { // if not final neuron
+		p.Value = checkAct(n.ActFN, p.Value)
+	}
+	// ==============================
+	p.PreVals = []float64{}
+}
+
 func (n *NetPerc) forwardPass() {
 	for il, layer := range n.Net {
 		for _, perc := range layer {
 			if len(n.Net)-1 == il {
-				if n.FinalAct {
-					if n.ActRelu {
-						perc.activationRelu()
-					} else {
-						perc.activation()
-					}
-				} else {
-					perc.activationWithOutAct()
-				}
+				n.activationNeuron(perc, true)
 			} else {
-				perc.activation()
+				n.activationNeuron(perc)
 			}
 			if len(perc.Weights) > 0 {
 				for iw, weight := range perc.Weights {
