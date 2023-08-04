@@ -332,7 +332,11 @@ func (n *NetPerc) forwardPass() {
 					perc.activationWithOutAct()
 				}
 			} else {
-				perc.activation()
+				if n.FinalAct {
+					perc.activation()
+				} else {
+					perc.activationWithOutAct()
+				}
 			}
 			if len(perc.Weights) > 0 {
 				for iw, weight := range perc.Weights {
