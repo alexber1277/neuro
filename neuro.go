@@ -332,11 +332,7 @@ func (n *NetPerc) forwardPass() {
 					perc.activationWithOutAct()
 				}
 			} else {
-				if n.FinalAct {
-					perc.activation()
-				} else {
-					perc.activationWithOutAct()
-				}
+				perc.activation()
 			}
 			if len(perc.Weights) > 0 {
 				for iw, weight := range perc.Weights {
@@ -397,7 +393,7 @@ func (n *NetPerc) backPropogation() {
 	for il, layer := range n.Net {
 		for _, perc := range layer {
 			for iw, weight := range perc.Weights {
-				newWeight := weight + n.LearnRate*n.Net[il+1][iw].Error*perc.Value //*n.Net[il+1][iw].proizvod()
+				newWeight := weight + n.LearnRate*n.Net[il+1][iw].Error*perc.Value*n.Net[il+1][iw].proizvod()
 				perc.Weights[iw] = newWeight
 			}
 		}
