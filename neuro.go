@@ -401,33 +401,30 @@ func (p *Perc) activationWithOutAct() {
 }
 
 func (n *NetPerc) activationNeuron(p *Perc, finalNeuro ...bool) {
-	var tm float64
-	var fin bool
-	if len(finalNeuro) > 0 {
-		fin = finalNeuro[0]
+	if len(p.PreVals) > 0 {
+		var tm float64
+		var fin bool
+		if len(finalNeuro) > 0 {
+			fin = finalNeuro[0]
+		}
+		for _, v := range p.PreVals {
+			tm += v
+		}
+		// ==============================
+		if fin { // if final neuron
+			p.Value = checkAct(n.ActFNFinal, tm)
+		} else { // if not final neuron
+			p.Value = checkAct(n.ActFN, tm)
+		}
+		// ==============================
+		p.PreVals = []float64{}
 	}
-	for _, v := range p.PreVals {
-		tm += v
-	}
-	p.Value = tm
-	// ==============================
-	if fin { // if final neuron
-		p.Value = checkAct(n.ActFNFinal, p.Value)
-	} else { // if not final neuron
-		p.Value = checkAct(n.ActFN, p.Value)
-	}
-	// ==============================
-	p.PreVals = []float64{}
 }
 
 func (n *NetPerc) forwardPass() {
 	for il, layer := range n.Net {
 		for _, perc := range layer {
-			if len(n.Net)-1 == il {
-				n.activationNeuron(perc, true)
-			} else {
-				n.activationNeuron(perc)
-			}
+			n.activationNeuron(perc, len(n.Net)-1 == il)
 			if len(perc.Weights) > 0 {
 				for iw, weight := range perc.Weights {
 					n.Net[il+1][iw].addVals(perc.Value * weight)
