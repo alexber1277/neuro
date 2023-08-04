@@ -50,6 +50,7 @@ type NetPerc struct {
 	LearnRate   float64     `json:"learn_rate"`
 	LastPrice   float64     `json:"last_price"`
 	Result      Result      `json:"result"`
+	ActRelu     bool        `json:"relu"`
 	Bias        bool        `json:"bias"`
 	FinalAct    bool        `json:"final_act"`
 	Regress     bool        `json:"regress"`
@@ -86,6 +87,11 @@ func (n *NetPerc) SetRegress(reg bool) *NetPerc {
 
 func (n *NetPerc) SetFinAct(act bool) *NetPerc {
 	n.FinalAct = act
+	return n
+}
+
+func (n *NetPerc) SetActRelu(status bool) *NetPerc {
+	n.ActRelu = status
 	return n
 }
 
@@ -311,6 +317,24 @@ func (p *Perc) activation() {
 	}
 }
 
+func (p *Perc) activationRelu() {
+	if len(p.PreVals) > 0 {
+		var tm float64
+		for _, v := range p.PreVals {
+			tm += v
+		}
+		p.Value = p.relu(tm)
+		p.PreVals = []float64{}
+	}
+}
+
+func (p *Perc) relu(fl float64) float64 {
+	if fl < 0 {
+		return 0
+	}
+	return fl
+}
+
 func (p *Perc) activationWithOutAct() {
 	if len(p.PreVals) > 0 {
 		var tm float64
@@ -327,7 +351,11 @@ func (n *NetPerc) forwardPass() {
 		for _, perc := range layer {
 			if len(n.Net)-1 == il {
 				if n.FinalAct {
-					perc.activation()
+					if n.ActRelu {
+						perc.activationRelu()
+					} else {
+						perc.activation()
+					}
 				} else {
 					perc.activationWithOutAct()
 				}
@@ -393,7 +421,7 @@ func (n *NetPerc) backPropogation() {
 	for il, layer := range n.Net {
 		for _, perc := range layer {
 			for iw, weight := range perc.Weights {
-				newWeight := weight + n.LearnRate*n.Net[il+1][iw].Error*perc.Value*n.Net[il+1][iw].proizvod()
+				newWeight := weight + n.LearnRate*n.Net[il+1][iw].Error*perc.Value //* n.Net[il+1][iw].proizvod()
 				perc.Weights[iw] = newWeight
 			}
 		}
@@ -524,8 +552,9 @@ func (n *NetPerc) TrainItersNew() *NetPerc {
 func (n *NetPerc) calcMainErrorDataSet() {
 	var sumErr float64 = 0
 	for _, fl := range n.ErrorArr {
-		if math.IsNaN(fl) {
-			sumErr += 1
+		if math.IsNaN(fl) || math.IsInf(fl, 0) {
+			//sumErr += 0
+			//log.Println(n.ErrorArr)
 		} else {
 			sumErr += fl
 		}
