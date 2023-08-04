@@ -40,31 +40,32 @@ type Result struct {
 }
 
 type NetPerc struct {
-	Layers      int         `json:"layer"`
-	Neurons     int         `json:"neurons"`
-	Inps        int         `json:"inps"`
-	Outs        int         `json:"outs"`
-	Iters       int         `json:"iters"`
-	CurrInd     int         `json:"curr_ind"`
-	Error       float64     `json:"error"`
-	LearnRate   float64     `json:"learn_rate"`
-	LastPrice   float64     `json:"last_price"`
-	Result      Result      `json:"result"`
-	ActFN       int         `json:"act_fn"`
-	ActFNFinal  int         `json:"act_fn_final"`
-	Bias        bool        `json:"bias"`
-	FinalAct    bool        `json:"final_act"`
-	Regress     bool        `json:"regress"`
-	Budget      float64     `json:"budget"`
-	DiffPerce   float64     `json:"diff_perce"`
-	StatusBSell bool        `json:"status_buy_sell"`
-	ErrorArr    []float64   `json:"error_arr"`
-	RandWeights []float64   `json:"random_waights"`
-	Data        []DataTeach `json:"data"`
-	Net         [][]*Perc   `json:"net"`
-	Score       float64     `json:"score"`
-	Nols        int         `json:"nols"`
-	Trades      int         `json:"trades"`
+	Layers       int         `json:"layer"`
+	Neurons      int         `json:"neurons"`
+	Inps         int         `json:"inps"`
+	Outs         int         `json:"outs"`
+	Iters        int         `json:"iters"`
+	CurrInd      int         `json:"curr_ind"`
+	Error        float64     `json:"error"`
+	LearnRate    float64     `json:"learn_rate"`
+	LastPrice    float64     `json:"last_price"`
+	Result       Result      `json:"result"`
+	ProizvidVers int         `json:"proizvod_version"`
+	ActFN        int         `json:"act_fn"`
+	ActFNFinal   int         `json:"act_fn_final"`
+	Bias         bool        `json:"bias"`
+	FinalAct     bool        `json:"final_act"`
+	Regress      bool        `json:"regress"`
+	Budget       float64     `json:"budget"`
+	DiffPerce    float64     `json:"diff_perce"`
+	StatusBSell  bool        `json:"status_buy_sell"`
+	ErrorArr     []float64   `json:"error_arr"`
+	RandWeights  []float64   `json:"random_waights"`
+	Data         []DataTeach `json:"data"`
+	Net          [][]*Perc   `json:"net"`
+	Score        float64     `json:"score"`
+	Nols         int         `json:"nols"`
+	Trades       int         `json:"trades"`
 }
 
 var mtx sync.Mutex
@@ -75,6 +76,9 @@ const (
 	ActivationReLU     = 2
 	ActivationReLULeak = 3
 	ActivationTahn     = 4
+
+	ProizvodV1 = 0
+	ProizvodV2 = 1
 )
 
 func checkAct(act int, val float64) float64 {
@@ -126,6 +130,11 @@ func InitNetPerc(layer, neurons int) *NetPerc {
 	}
 	n.SetFinAct(true)
 	n.SetBias(false)
+	return n
+}
+
+func (n *NetPerc) SetProizvod(v int) *NetPerc {
+	n.ProizvidVers = v
 	return n
 }
 
@@ -474,7 +483,10 @@ func (n *NetPerc) calcError() {
 			for iw, weight := range perc.Weights {
 				perc.Error += weight * n.Net[il+1][iw].Error
 			}
-			//perc.Error = perc.Error * perc.proizvod()
+			if n.ProizvidVers == ProizvodV1 {
+				perc.Error = perc.Error * perc.proizvod()
+			}
+
 		}
 	}
 
@@ -484,7 +496,13 @@ func (n *NetPerc) backPropogation() {
 	for il, layer := range n.Net {
 		for _, perc := range layer {
 			for iw, weight := range perc.Weights {
-				newWeight := weight + n.LearnRate*n.Net[il+1][iw].Error*perc.Value*n.Net[il+1][iw].proizvod()
+				var newWeight float64
+				if n.ProizvidVers == ProizvodV1 {
+					newWeight = weight + n.LearnRate*n.Net[il+1][iw].Error*perc.Value
+				}
+				if n.ProizvidVers == ProizvodV2 {
+					newWeight = weight + n.LearnRate*n.Net[il+1][iw].Error*perc.Value*n.Net[il+1][iw].proizvod()
+				}
 				perc.Weights[iw] = newWeight
 			}
 		}
