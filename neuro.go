@@ -879,6 +879,8 @@ func round(num float64) int {
 
 func (n *NetPerc) Copy() *NetPerc {
 	var nn NetPerc
+	nnData := n.Data
+	n.Data = nil
 	bts, err := json.Marshal(n)
 	if err != nil {
 		log.Fatal(err)
@@ -889,6 +891,7 @@ func (n *NetPerc) Copy() *NetPerc {
 	nn.Error = 1
 	nn.ErrorArr = []float64{}
 	nn.Result = Result{}
+	nn.Data = nnData
 	return &nn
 }
 
