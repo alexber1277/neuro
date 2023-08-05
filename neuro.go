@@ -892,6 +892,7 @@ func (n *NetPerc) Copy() *NetPerc {
 	nn.ErrorArr = []float64{}
 	nn.Result = Result{}
 	nn.Data = nnData
+	n.Data = nnData
 	return &nn
 }
 
