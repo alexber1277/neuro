@@ -76,6 +76,7 @@ const (
 	ActivationReLU     = 2
 	ActivationReLULeak = 3
 	ActivationTahn     = 4
+	ActivationSoftMax  = 5
 
 	ProizvodV1 = 0
 	ProizvodV2 = 1
@@ -114,8 +115,11 @@ func relu(val float64) float64 {
 }
 
 func reluLeaky(val float64) float64 {
-	alpha := 0.01
+	alpha := 0.001
 	if val < 0 {
+		return val * alpha
+	}
+	if val > 1 {
 		return val * alpha
 	}
 	return val
@@ -862,6 +866,15 @@ func randIntMin(min, max int) int {
 
 func getDiff(newPrice, oldPrice float64) float64 {
 	return toFixed(((newPrice - oldPrice) / ((newPrice + oldPrice) / 2) * 100), 3)
+}
+
+func getDiffV2(newPrice, oldPrice float64) float64 {
+	res := (newPrice - oldPrice) / oldPrice * 100
+	if math.IsNaN(res) || math.IsInf(res, 0) {
+		return 0
+	}
+	return res
+
 }
 
 func Diff(newPrice, oldPrice float64) float64 {

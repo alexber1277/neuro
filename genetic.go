@@ -43,6 +43,7 @@ type GeneticConf struct {
 	Hours          float64      `json:"hours"`
 	MinPerce       float64      `json:"min_perce"`
 	Data           []*DataTeach `json:"data"`
+	DataList       []DataTeach  `json:"data_list"`
 }
 
 type LBO struct {
@@ -263,6 +264,73 @@ func (g *Genetic) sortBestOrders() *Genetic {
 	return g
 }
 
+func (g *Genetic) GetMediana(cnt int) float64 {
+	med := (float64(len(g.ResOrders)/2-cnt) / (float64(g.Config.Inps) / 0.00001))
+	if med < 0 {
+		med *= -1
+		return med
+	}
+	if med == 0 {
+		med = 0.00001
+		return med
+	}
+	return med
+}
+
+func (g *Genetic) SortResOrdersV2() *Genetic {
+	sort.Slice(g.ResOrders, func(i, j int) bool {
+		return g.ResOrders[i].Score > g.ResOrders[j].Score
+	})
+	return g
+}
+
+func (g *Genetic) SortResOrders() *Genetic {
+	sort.Slice(g.ResOrders, func(i, j int) bool {
+		g.ResOrders[i].Score = g.ResOrders[i].Sum / 1000000 / g.GetMediana(g.ResOrders[i].Count)
+		g.ResOrders[j].Score = g.ResOrders[j].Sum / 1000000 / g.GetMediana(g.ResOrders[j].Count)
+		return g.ResOrders[i].Score > g.ResOrders[j].Score
+	})
+	return g
+}
+
+// perc - percent by inps
+func (g *Genetic) GenerateOrdersV3(perc float64) *Genetic {
+	start := int(float64(g.Config.Inps) * (perc / 100))
+	length := g.Config.Inps - start*2
+	for l := length; l >= start; l-- {
+		r := ResOrder{}
+		r.Trades = []int{}
+		for i := start; i < l; i++ {
+			if i%3 == 0 {
+				r.Trades = append(r.Trades, i)
+			}
+		}
+		r.Count = len(r.Trades)
+		if r.Count%2 == 0 && r.Count != 0 {
+			g.ResOrders = append(g.ResOrders, &r)
+		}
+	}
+	return g
+}
+
+// perc - percent by inps
+func (g *Genetic) GenerateOrdersV4(perc int) *Genetic {
+	step := int(perc / 3)
+	max := perc + step
+	min := perc - step
+	for i := min; i <= max; i++ {
+		var r ResOrder
+		for s := 0; s < g.Config.Inps; s++ {
+			if s%i == 0 {
+				r.Trades = append(r.Trades, s)
+			}
+		}
+		r.Count = len(r.Trades)
+		g.ResOrders = append(g.ResOrders, &r)
+	}
+	return g
+}
+
 func (g *Genetic) AddPopulations() *Genetic {
 	var s int
 	for i := 0; i < g.Config.Population; i++ {
@@ -288,27 +356,38 @@ func (g *Genetic) showList(max ...int) {
 	}
 }
 
-func (g *Genetic) TrainItemOrders(inpData []DataTeach) {
+func (r *ResOrder) CalcSum(budget float64, inpData []DataTeach) {
+	r.Score = 0
+	r.Sum = budget
+	for _, t := range r.Trades {
+		if !r.Type {
+			r.Sum -= inpData[t].Price
+			r.Type = true
+		} else {
+			r.Sum += inpData[t].Price
+			r.Type = false
+		}
+	}
+	r.Score = r.Sum
+}
+
+func (g *Genetic) TrainItemOrders() {
 	var wg sync.WaitGroup
 	for _, res := range g.ResOrders {
 		wg.Add(1)
 		go func(r *ResOrder) {
 			defer wg.Done()
+			r.Type = false
 			r.Diff = 0
 			r.Score = 0
 			r.Sum = g.Config.Budget
-			//lPriceBy := 0.0
 			for _, t := range r.Trades {
 				if !r.Type {
-					r.Sum -= inpData[t].Price
-					//lPriceBy = inpData[t].Price
+					r.Sum -= g.Config.DataList[t].Price
 					r.Type = true
 				} else {
-					//if Diff(inpData[t].Price, lPriceBy) > g.Config.MinPerce {
-					r.Sum += inpData[t].Price
-					//r.Diff += inpData[t].Price - lPriceBy
+					r.Sum += g.Config.DataList[t].Price
 					r.Type = false
-					//}
 				}
 			}
 		}(res)
@@ -533,6 +612,24 @@ func (g *Genetic) Load(fileName string) bool {
 	return true
 }
 
+func LoadGen(fileName string) (*Genetic, bool) {
+	var gen Genetic
+	if fileName == "" {
+		log.Println("empty filename")
+		return &gen, false
+	}
+	bts, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		log.Println(err)
+		return &gen, false
+	}
+	if err := json.Unmarshal(bts, &gen); err != nil {
+		log.Println(err)
+		return &gen, false
+	}
+	return &gen, true
+}
+
 func (g *Genetic) mutateV2() {
 	var (
 		wg          sync.WaitGroup
@@ -556,14 +653,15 @@ func (g *Genetic) mutateV2() {
 }
 
 func (g *Genetic) MutateOrdersV3() {
-	bts := g.ResOrders[0].GetBytesJson()
-	for len(g.ResOrders) < g.Config.Population {
-		var next ResOrder
-		json.Unmarshal(bts, &next)
+	for i := 0; len(g.ResOrders) < g.Config.Population; i++ {
+		next := g.ResOrders[i].CopyOrig()
 		for s := 0; s < g.Config.MaxMutateIter; s++ {
 			next.mutateV3(g.Config.Inps)
 		}
-		g.ResOrders = append(g.ResOrders, &next)
+		g.ResOrders = append(g.ResOrders, next)
+		if i >= g.Config.LastBest {
+			i = 0
+		}
 	}
 }
 
@@ -622,6 +720,13 @@ func (r *ResOrder) GetBytesJson() []byte {
 	return bts
 }
 
+func (r *ResOrder) CopyOrig() *ResOrder {
+	rr := ResOrder{Count: r.Count}
+	rr.Trades = make([]int, len(r.Trades))
+	copy(rr.Trades, r.Trades)
+	return &rr
+}
+
 func remove(s []int, i int) []int {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]
@@ -657,6 +762,33 @@ func (r *ResOrder) copyAndMutate(maxVal int) *ResOrder {
 		log.Fatal(err)
 	}
 	return res.mutateV3(maxVal)
+}
+
+func (g *Genetic) FirstMutateOrders(iters int) {
+	g.LBOitem = &LBO{Score: -1, Count: 0, Trades: []int{}}
+	for i := 0; i < iters; i++ {
+		var wg sync.WaitGroup
+		wg.Add(len(g.ResOrders))
+		for _, ord := range g.ResOrders {
+			func(res *ResOrder) {
+				defer wg.Done()
+				res.mutateV3(g.Config.Inps)
+				res.CalcSum(g.Config.Budget, g.Config.DataList)
+			}(ord)
+		}
+		wg.Wait()
+		g.SortResOrdersV2()
+		if g.LBOitem.Score < g.GetBestOrders().Score {
+			lbo := LBO{
+				Score:  g.GetBestOrders().Score,
+				Count:  g.GetBestOrders().Count,
+				Trades: g.GetBestOrders().Trades,
+			}
+			g.LBOitem = &lbo
+			fmt.Printf("iteration: %.f; best result: %.3f; count - %.f; sum: %.3f\n", float64(i), g.GetBestOrders().Score, float64(g.GetBestOrders().Count), g.GetBestOrders().Sum)
+		}
+		//fmt.Printf("best result: %.3f; count - %.f; sum: %.3f\n", g.GetBestOrders().Score, float64(g.GetBestOrders().Count), g.GetBestOrders().Sum)
+	}
 }
 
 func (r *ResOrder) mutateV3(maxVal int) *ResOrder {
