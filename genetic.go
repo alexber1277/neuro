@@ -338,7 +338,7 @@ func (g *Genetic) GenerateOrdersV5(perc ...int) *Genetic {
 	if len(perc) > 0 {
 		perceOrig = perc[0]
 	}
-	countOrders = int(float64(g.Config.Inps) * float64(perceOrig/100))
+	countOrders = int(float64(g.Config.Inps) * float64(float64(perceOrig)/100))
 	if countOrders%2 != 0 {
 		countOrders += 1
 	}
