@@ -331,6 +331,34 @@ func (g *Genetic) GenerateOrdersV4(perc int) *Genetic {
 	return g
 }
 
+// perc - percent by inps
+func (g *Genetic) GenerateOrdersV5(perc ...int) *Genetic {
+	var perceOrig int = 10
+	var countOrders int
+	if len(perc) > 0 {
+		perceOrig = perc[0]
+	}
+	countOrders = int(g.Config.Inps * (perceOrig / 100))
+	if countOrders%2 != 0 {
+		countOrders += 1
+	}
+	r := ResOrder{Count: countOrders}
+	mpDt := map[int]int{}
+	for {
+		in := randIntMin(10, g.Config.Inps)
+		if _, ok := mpDt[in]; !ok {
+			r.Trades = append(r.Trades, in)
+			mpDt[in] = 1
+		}
+		if len(r.Trades) >= r.Count {
+			break
+		}
+	}
+	sort.Ints(r.Trades)
+	g.ResOrders = append(g.ResOrders, &r)
+	return g
+}
+
 func (g *Genetic) AddPopulations() *Genetic {
 	var s int
 	for i := 0; i < g.Config.Population; i++ {
