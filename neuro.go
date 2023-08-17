@@ -66,6 +66,7 @@ type NetPerc struct {
 	Score        float64     `json:"score"`
 	Nols         int         `json:"nols"`
 	Trades       int         `json:"trades"`
+	Utils        interface{} `json:"utils"`
 }
 
 var mtx sync.Mutex
@@ -906,6 +907,22 @@ func (n *NetPerc) Copy() *NetPerc {
 	nn.Result = Result{}
 	nn.Data = nnData
 	n.Data = nnData
+	return &nn
+}
+
+func (n *NetPerc) CopyClear() *NetPerc {
+	var nn NetPerc
+	n.Data = nil
+	bts, err := json.Marshal(n)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := json.Unmarshal(bts, &nn); err != nil {
+		log.Fatal(err)
+	}
+	nn.Error = 0
+	nn.ErrorArr = []float64{}
+	nn.Result = Result{}
 	return &nn
 }
 
