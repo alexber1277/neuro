@@ -64,6 +64,7 @@ type NetPerc struct {
 	Data         []DataTeach `json:"data"`
 	Net          [][]*Perc   `json:"net"`
 	Score        float64     `json:"score"`
+	Scores       []float64   `json:"scores"`
 	Nols         int         `json:"nols"`
 	Trades       int         `json:"trades"`
 	Utils        interface{} `json:"utils"`
