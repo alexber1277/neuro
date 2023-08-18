@@ -40,34 +40,35 @@ type Result struct {
 }
 
 type NetPerc struct {
-	Layers       int         `json:"layer"`
-	Neurons      int         `json:"neurons"`
-	Inps         int         `json:"inps"`
-	Outs         int         `json:"outs"`
-	Iters        int         `json:"iters"`
-	CurrInd      int         `json:"curr_ind"`
-	Error        float64     `json:"error"`
-	LearnRate    float64     `json:"learn_rate"`
-	LastPrice    float64     `json:"last_price"`
-	Result       Result      `json:"result"`
-	ProizvidVers int         `json:"proizvod_version"`
-	ActFN        int         `json:"act_fn"`
-	ActFNFinal   int         `json:"act_fn_final"`
-	Bias         bool        `json:"bias"`
-	FinalAct     bool        `json:"final_act"`
-	Regress      bool        `json:"regress"`
-	Budget       float64     `json:"budget"`
-	DiffPerce    float64     `json:"diff_perce"`
-	StatusBSell  bool        `json:"status_buy_sell"`
-	ErrorArr     []float64   `json:"error_arr"`
-	RandWeights  []float64   `json:"random_waights"`
-	Data         []DataTeach `json:"data"`
-	Net          [][]*Perc   `json:"net"`
-	Score        float64     `json:"score"`
-	Scores       []float64   `json:"scores"`
-	Nols         int         `json:"nols"`
-	Trades       int         `json:"trades"`
-	Utils        interface{} `json:"utils"`
+	Layers       int           `json:"layer"`
+	Neurons      int           `json:"neurons"`
+	Inps         int           `json:"inps"`
+	Outs         int           `json:"outs"`
+	Iters        int           `json:"iters"`
+	CurrInd      int           `json:"curr_ind"`
+	Error        float64       `json:"error"`
+	LearnRate    float64       `json:"learn_rate"`
+	LastPrice    float64       `json:"last_price"`
+	Result       Result        `json:"result"`
+	ProizvidVers int           `json:"proizvod_version"`
+	ActFN        int           `json:"act_fn"`
+	ActFNFinal   int           `json:"act_fn_final"`
+	Bias         bool          `json:"bias"`
+	FinalAct     bool          `json:"final_act"`
+	Regress      bool          `json:"regress"`
+	Budget       float64       `json:"budget"`
+	DiffPerce    float64       `json:"diff_perce"`
+	StatusBSell  bool          `json:"status_buy_sell"`
+	ErrorArr     []float64     `json:"error_arr"`
+	RandWeights  []float64     `json:"random_waights"`
+	Data         []DataTeach   `json:"data"`
+	Net          [][]*Perc     `json:"net"`
+	Score        float64       `json:"score"`
+	Scores       []float64     `json:"scores"`
+	Nols         int           `json:"nols"`
+	Trades       int           `json:"trades"`
+	Utils        interface{}   `json:"utils"`
+	Utilses      []interface{} `json:"utils"`
 }
 
 var mtx sync.Mutex
