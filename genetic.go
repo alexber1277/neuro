@@ -432,6 +432,7 @@ func (g *Genetic) TrainItem(ret func(n *NetPerc)) {
 			g.Nets[ind].Trades = 0
 			g.Nets[ind].Nols = 0
 			g.Nets[ind].Score = 0
+			g.Nets[ind].Scores = nil
 			g.Nets[ind].Budget = g.Config.Budget
 			g.Nets[ind].LastPrice = 0
 			g.Nets[ind].DiffPerce = 0
