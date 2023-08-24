@@ -86,6 +86,10 @@ const (
 	ProizvodV2 = 1
 )
 
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
 func checkAct(act int, val float64) float64 {
 	var retVal float64
 	switch act {
@@ -837,6 +841,12 @@ func randFloat(min, max float64) float64 {
 }
 
 func randInt(max int) int {
+	if max == 0 {
+		return 0
+	}
+	if max < 0 {
+		return 0
+	}
 	return rand.Intn(max)
 }
 
@@ -865,6 +875,10 @@ func randIntMin(min, max int) int {
 	if max-min == 0 {
 		return 0
 	}
+	return rand.Intn(max-min) + min
+}
+
+func randIntMinOrig(min, max int) int {
 	return rand.Intn(max-min) + min
 }
 

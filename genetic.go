@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -68,10 +70,16 @@ type ResOrder struct {
 	Count  int     `json:"count"`
 	By     int     `json:"by"`
 	Type   bool    `json:"type"`
+	OldSum float64 `json:"oldsum"`
 	Sum    float64 `json:"sum"`
 	Score  float64 `json:"score"`
 	Diff   float64 `json:"diff"`
 	Trades []int   `json:"trades"`
+}
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
 func InitGenetic(conf ...GeneticConf) *Genetic {
@@ -874,4 +882,387 @@ func (g *Genetic) mutateOrdersFirst() {
 		}(ord)
 	}
 	wg.Wait()
+}
+
+func (g *Genetic) GenerateOrdersV6(maxIter int) *Genetic {
+	minIter := g.Config.Inps / 100 * 10
+	for d := minIter; d < minIter+maxIter; d++ {
+		order := ResOrder{Count: d}
+		order.GenerateTradesV2(g.Config.DataList)
+		g.ResOrders = append(g.ResOrders, &order)
+	}
+	for _, o := range g.ResOrders {
+		if o.Count%2 != 0 {
+			o.Trades = o.Trades[1:]
+			o.Count = len(o.Trades)
+		}
+	}
+	return g
+}
+
+func (g *Genetic) CalcSumOrder(ord *ResOrder) {
+	ord.OldSum = ord.Sum
+	ord.Sum = 0
+	ord.Type = false
+	for _, i := range ord.Trades {
+		if !ord.Type {
+			ord.Sum -= g.Config.DataList[i].Price
+			ord.Type = true
+		} else {
+			ord.Sum += g.Config.DataList[i].Price
+			ord.Type = false
+		}
+	}
+}
+
+func (ord *ResOrder) SumCheck(list []DataTeach) {
+	ord.OldSum = ord.Sum
+	ord.Sum = 0
+	ord.Type = false
+	for _, i := range ord.Trades {
+		if !ord.Type {
+			ord.Sum -= list[i].Price
+			ord.Type = true
+		} else {
+			ord.Sum += list[i].Price
+			ord.Type = false
+		}
+	}
+}
+
+func (g *Genetic) TrainOrders(maxAgain int) {
+	mpData := map[float64]int{}
+	for m := 0; true; m++ {
+		// ==============================
+		var wg sync.WaitGroup
+		wg.Add(len(g.ResOrders))
+		for _, ord := range g.ResOrders {
+			go func(o *ResOrder) {
+				defer wg.Done()
+				g.CalcSumOrder(o)
+			}(ord)
+		}
+		wg.Wait()
+		// ==============================
+		sort.Slice(g.ResOrders, func(i, j int) bool {
+			return g.ResOrders[i].Sum > g.ResOrders[j].Sum
+		})
+		// ==============================
+		g.ResOrders = g.ResOrders[:g.Config.LastBest]
+		// ==============================
+		if _, ok := mpData[g.GetBestOrders().Sum]; !ok {
+			mpData[g.GetBestOrders().Sum] = 0
+		}
+		mpData[g.GetBestOrders().Sum] += 1
+		// ==============================
+		if m%100 == 0 {
+			fmt.Printf("%.3f\n", g.GetBestOrders().Sum)
+		}
+		// ==============================
+		if mpData[g.GetBestOrders().Sum] > maxAgain {
+			break
+		}
+		//tm1 := time.Now()
+		// ==============================
+		g.MutateOrdersV5()
+		// ==============================
+		//println(time.Now().Sub(tm1).String())
+	}
+}
+
+func (g *Genetic) MutateOrdersV5() {
+	for {
+		var wg sync.WaitGroup
+		var mt sync.Mutex
+		var list []*ResOrder
+		for i := 0; i < len(g.ResOrders); i++ {
+			wg.Add(1)
+			go func(ord *ResOrder) {
+				defer wg.Done()
+				oCopy := ord.CopyOrig()
+				oCopy.MutaterOrderV2(g.Config.DataList)
+				mt.Lock()
+				list = append(list, oCopy)
+				mt.Unlock()
+			}(g.ResOrders[i])
+		}
+		wg.Wait()
+		if len(list) > 0 {
+			g.ResOrders = append(g.ResOrders, list...)
+		}
+		if len(g.ResOrders) > g.Config.Population {
+			g.ResOrders = g.ResOrders[:g.Config.Population]
+			break
+		}
+	}
+}
+
+func removeSl(slice []int, s int) []int {
+	return append(slice[:s], slice[s+1:]...)
+}
+
+func (ord *ResOrder) MutaterOrderV2(list []DataTeach) {
+	cnt := randInt(ord.Count)
+	mpData := map[int]bool{}
+	for _, tr := range ord.Trades {
+		mpData[tr] = true
+	}
+	for {
+		rNew := randIntMin(0, len(list)-1)
+		if _, ok := mpData[rNew]; !ok {
+			ord.Trades[cnt] = rNew
+			break
+		}
+	}
+	sort.Ints(ord.Trades)
+}
+
+func (g *Genetic) MutateOrdersV4() {
+	var wg sync.WaitGroup
+	wg.Add(len(g.ResOrders))
+	for _, ord := range g.ResOrders {
+		go func(o *ResOrder) {
+			defer wg.Done()
+			o.MutaterOrderV1(g.Config.DataList)
+		}(ord)
+	}
+	wg.Wait()
+}
+
+func (o *ResOrder) MutaterOrderV1(list []DataTeach) {
+	oCopy := o.CopyOrig()
+	cnt := randInt(oCopy.Count)
+	min, max := func() (int, int) {
+		if cnt == 0 {
+			return 0, oCopy.Trades[1] - 1
+		}
+		if cnt >= oCopy.Count-1 {
+			return oCopy.Trades[cnt-1] + 1, oCopy.Trades[oCopy.Count-1]
+		}
+		return oCopy.Trades[cnt-1] + 1, oCopy.Trades[cnt+1] - 1
+	}()
+	oCopy.Trades[cnt] = randIntMin(min, max)
+	oCopy.SumCheck(list)
+	if o.Sum < oCopy.Sum {
+		copy(o.Trades, oCopy.Trades)
+	}
+}
+
+func (g *Genetic) GenerateOrdersDownV7(maxIter int) *Genetic {
+	minIter := g.Config.Inps / 100 * 2
+	for d := minIter; d < minIter+maxIter; d++ {
+		order := ResOrder{Count: d}
+		order.GenerateTradesV2(g.Config.DataList)
+		g.ResOrders = append(g.ResOrders, &order)
+	}
+	return g
+}
+
+func (g *Genetic) TrainOrdersDown(iters int) {
+
+	for i := 0; i < iters; i++ {
+		// ==============================
+		var wg sync.WaitGroup
+		wg.Add(len(g.ResOrders))
+		for _, ord := range g.ResOrders {
+			go func(o *ResOrder) {
+				defer wg.Done()
+				g.CalcDownOrder(o)
+			}(ord)
+		}
+		wg.Wait()
+		// ==============================
+		sort.Slice(g.ResOrders, func(i, j int) bool {
+			return g.ResOrders[i].Sum < g.ResOrders[j].Sum
+		})
+		// ==============================
+		if i%10000 == 0 {
+			fmt.Printf("SUM: %.3f\n", g.GetBestOrders().Sum)
+		}
+		// ==============================
+		g.MutateOrdersDownV5()
+		// ==============================
+
+	}
+
+}
+
+func (g *Genetic) CalcDownOrder(ord *ResOrder) {
+	ord.OldSum = ord.Sum
+	ord.Sum = 0
+	for _, i := range ord.Trades {
+		ord.Sum -= g.Config.DataList[i].Price
+	}
+}
+
+func (ord *ResOrder) CalcDownOrder(list []DataTeach) {
+	ord.OldSum = ord.Sum
+	ord.Sum = 0
+	for _, i := range ord.Trades {
+		if !ord.Type {
+			ord.Sum -= list[i].Price
+			ord.Type = true
+		} else {
+			ord.Sum += list[i].Price
+			ord.Type = false
+		}
+	}
+}
+
+func (g *Genetic) MutateOrdersDownV5() {
+	var wg sync.WaitGroup
+	wg.Add(len(g.ResOrders))
+	for _, ord := range g.ResOrders {
+		go func(o *ResOrder) {
+			defer wg.Done()
+			o.MutaterOrderDownV2(g.Config.DataList)
+		}(ord)
+	}
+	wg.Wait()
+}
+
+func (o *ResOrder) MutaterOrderDownV2(list []DataTeach) {
+	oCopy := o.CopyOrig()
+	cnt := randInt(oCopy.Count)
+	min, max := func() (int, int) {
+		if cnt == 0 {
+			return 0, oCopy.Trades[1] - 1
+		}
+		if cnt >= oCopy.Count-1 {
+			return oCopy.Trades[cnt-1] + 1, oCopy.Trades[oCopy.Count-1]
+		}
+		return oCopy.Trades[cnt-1] + 1, oCopy.Trades[cnt+1] - 1
+	}()
+	oCopy.Trades[cnt] = randIntMin(min, max)
+	oCopy.SumCheck(list)
+	if o.Sum < oCopy.Sum {
+		copy(o.Trades, oCopy.Trades)
+	}
+}
+
+func (g *Genetic) GenerateOrdersV7() *Genetic {
+	minIter := g.Config.Inps / 50
+	maxIter := g.Config.Inps / 10
+
+	log.Println("MIN:", minIter, "; MAX:", maxIter)
+
+	for d := minIter; d < maxIter; d++ {
+		order := ResOrder{Count: d}
+		order.GenerateTradesV2(g.Config.DataList)
+		g.ResOrders = append(g.ResOrders, &order)
+		if d+1 >= maxIter {
+			d = 0
+		}
+		if len(g.ResOrders) >= g.Config.Population {
+			break
+		}
+	}
+	return g
+}
+
+func (ord *ResOrder) GenerateTradesV2(list []DataTeach) {
+	mpData := map[int]bool{}
+	for {
+		cnt := randIntMin(0, len(list))
+		if _, ok := mpData[cnt]; !ok {
+			mpData[cnt] = true
+			ord.Trades = append(ord.Trades, cnt)
+			if len(ord.Trades) >= ord.Count {
+				break
+			}
+		}
+	}
+	sort.Ints(ord.Trades)
+}
+
+func (g *Genetic) Tuning(max int) {
+	for i := 0; i < max; i++ {
+		mpData := map[int]bool{}
+		ord := g.GetBestOrders().CopyOrig()
+		ord.SumCheck(g.Config.DataList)
+		for _, tr := range ord.Trades {
+			mpData[tr] = true
+		}
+		rndKey := randInt(ord.Count)
+		var minSum, maxSum float64
+		minVl, maxVl := ord.Trades[rndKey]-1, ord.Trades[rndKey]+1
+		if minVl < 0 {
+			minVl = 0
+		}
+		if maxVl > g.Config.Inps-1 {
+			maxVl = g.Config.Inps - 1
+		}
+		_, okMin := mpData[minVl]
+		_, okMax := mpData[maxVl]
+		if !okMin {
+			minOrd := ord.CopyOrig()
+			minOrd.Trades[rndKey] = minVl
+			minOrd.SumCheck(g.Config.DataList)
+			minSum = minOrd.Sum
+		}
+		if !okMax {
+			maxOrd := ord.CopyOrig()
+			maxOrd.Trades[rndKey] = maxVl
+			maxOrd.SumCheck(g.Config.DataList)
+			maxSum = maxOrd.Sum
+		}
+		if ord.Sum > minSum && ord.Sum < maxSum {
+			continue
+		}
+		if ord.Sum < minSum {
+			g.GetBestOrders().Trades[rndKey] = minVl
+			g.GetBestOrders().SumCheck(g.Config.DataList)
+			continue
+		}
+		if ord.Sum < maxSum {
+			g.GetBestOrders().Trades[rndKey] = maxVl
+			g.GetBestOrders().SumCheck(g.Config.DataList)
+			continue
+		}
+		if i%10000 == 0 {
+			fmt.Printf("SUM: %.3f \n", ord.Sum)
+		}
+	}
+}
+
+func GeneticFormed(list []DataTeach) *Genetic {
+	// ====================
+	gen := InitGenetic(GeneticConf{
+		Population: 10000,
+		LastBest:   100,
+		DataList:   list,
+		Inps:       len(list),
+	})
+	// ====================
+	gen.GenerateOrdersV7()
+	gen.TrainOrders(1000)
+	// ====================
+	return gen
+}
+
+const fileKlinesAll = "klinesAll.dtx"
+
+func KLineListSave(list interface{}) {
+	bts, err := json.Marshal(list)
+	if err != nil {
+		log.Println("error all klines save:", err)
+		return
+	}
+	if err := ioutil.WriteFile(fileKlinesAll, bts, 0644); err != nil {
+		log.Println("error all klines file save:", err)
+		return
+	}
+}
+
+func KLineListLoad(in interface{}) bool {
+	bts, err := ioutil.ReadFile(fileKlinesAll)
+	if err != nil {
+		log.Println("error all klines read file:", err)
+		return false
+	}
+	if err := json.Unmarshal(bts, in); err != nil {
+		log.Println("error all klines unmarshal:", err)
+		return false
+	}
+	return true
 }
