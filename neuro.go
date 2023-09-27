@@ -27,10 +27,12 @@ type Perc struct {
 }
 
 type DataTeach struct {
+	ListId  int       `json:"list_id"`
 	Inputs  []float64 `json:"inputs"`
 	Outputs []float64 `json:"outputs"`
 	Price   float64   `json:"price"`
 	BuySell int       `json:"buy_sell"`
+	Perc    float64   `json:"perc"`
 }
 
 type Result struct {
@@ -40,36 +42,38 @@ type Result struct {
 }
 
 type NetPerc struct {
-	Layers       int           `json:"layer"`
-	Neurons      int           `json:"neurons"`
-	Inps         int           `json:"inps"`
-	Outs         int           `json:"outs"`
-	Iters        int           `json:"iters"`
-	CurrInd      int           `json:"curr_ind"`
-	Error        float64       `json:"error"`
-	LearnRate    float64       `json:"learn_rate"`
-	LastPrice    float64       `json:"last_price"`
-	Result       Result        `json:"result"`
-	ProizvidVers int           `json:"proizvod_version"`
-	ActFN        int           `json:"act_fn"`
-	ActFNFinal   int           `json:"act_fn_final"`
-	Bias         bool          `json:"bias"`
-	FinalAct     bool          `json:"final_act"`
-	Regress      bool          `json:"regress"`
-	Budget       float64       `json:"budget"`
-	DiffPerce    float64       `json:"diff_perce"`
-	StatusBSell  bool          `json:"status_buy_sell"`
-	ErrorArr     []float64     `json:"error_arr"`
-	RandWeights  []float64     `json:"random_waights"`
-	Data         []DataTeach   `json:"data"`
-	Net          [][]*Perc     `json:"net"`
-	Score        float64       `json:"score"`
-	Scores       []float64     `json:"scores"`
-	ScoresPrev   []float64     `json:"scores_prev"`
-	Nols         int           `json:"nols"`
-	Trades       int           `json:"trades"`
-	Utils        interface{}   `json:"utils"`
-	Utilses      []interface{} `json:"utils"`
+	Layers       int            `json:"layer"`
+	Neurons      int            `json:"neurons"`
+	Inps         int            `json:"inps"`
+	Outs         int            `json:"outs"`
+	Iters        int            `json:"iters"`
+	CurrInd      int            `json:"curr_ind"`
+	Error        float64        `json:"error"`
+	LearnRate    float64        `json:"learn_rate"`
+	LastPrice    float64        `json:"last_price"`
+	Result       Result         `json:"result"`
+	ProizvidVers int            `json:"proizvod_version"`
+	ActFN        int            `json:"act_fn"`
+	ActFNFinal   int            `json:"act_fn_final"`
+	Bias         bool           `json:"bias"`
+	FinalAct     bool           `json:"final_act"`
+	Regress      bool           `json:"regress"`
+	Budget       float64        `json:"budget"`
+	DiffPerce    float64        `json:"diff_perce"`
+	StatusBSell  bool           `json:"status_buy_sell"`
+	ErrorArr     []float64      `json:"error_arr"`
+	RandWeights  []float64      `json:"random_waights"`
+	Data         []DataTeach    `json:"data"`
+	Net          [][]*Perc      `json:"net"`
+	Score        float64        `json:"score"`
+	ScoreCalc    float64        `json:"score_calc"`
+	Scores       []float64      `json:"scores"`
+	ScoresPrev   []float64      `json:"scores_prev"`
+	Nols         int            `json:"nols"`
+	Trades       int            `json:"trades"`
+	OrdsMp       map[string]int `json:"ords_mp"`
+	Utils        interface{}    `json:"utils"`
+	Utilses      []interface{}  `json:"utils"`
 }
 
 var mtx sync.Mutex
@@ -277,7 +281,7 @@ func (n *NetPerc) SetWeight(min, max float64) *NetPerc {
 
 func (n *NetPerc) InitWeight() *NetPerc {
 	if len(n.RandWeights) < 2 {
-		n.RandWeights = []float64{-10, 10}
+		n.RandWeights = []float64{-0.5, 0.5}
 	}
 	for i, els := range n.Net {
 		for _, el := range els {
@@ -732,6 +736,19 @@ func (n *NetPerc) PredictBot(data []float64, last ...int) []float64 {
 	return response
 }
 
+func (n *NetPerc) Predictor(data []float64, last ...int) []float64 {
+	n.Data = nil
+	n.CurrInd = 0
+	n.SetData(DataTeach{Inputs: data})
+	n.setInputs()
+	n.forwardPass()
+	var response []float64
+	for _, perc := range n.getOuts() {
+		response = append(response, toFixed(perc.Value, 3))
+	}
+	return response
+}
+
 func (n *NetPerc) Equal(d1, d2 []float64) bool {
 	res := reflect.DeepEqual(d1, d2)
 	if res {
@@ -970,4 +987,22 @@ func debug(in interface{}) {
 	}
 	println(string(bt))
 	os.Exit(0)
+}
+
+func (n *NetPerc) CalcScoreTrades(nones, trades int) float64 {
+	nn := nones - n.OrdsMp["n"]
+	if nn < 0 {
+		nn *= -1
+	}
+	if nn == 0 {
+		nn = 1
+	}
+	b := trades - n.OrdsMp["b"]
+	if b < 0 {
+		b *= -1
+	}
+	if b == 0 {
+		b = 1
+	}
+	return float64(nn + b)
 }

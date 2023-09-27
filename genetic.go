@@ -445,6 +445,7 @@ func (g *Genetic) TrainItem(ret func(n *NetPerc)) {
 			g.Nets[ind].Budget = g.Config.Budget
 			g.Nets[ind].LastPrice = 0
 			g.Nets[ind].DiffPerce = 0
+			g.Nets[ind].OrdsMp = map[string]int{"n": 0, "b": 0, "s": 0, "u": 0}
 			g.Nets[ind].StatusBSell = false
 			ret(g.Nets[ind])
 		}(i)
@@ -1225,17 +1226,21 @@ func (g *Genetic) Tuning(max int) {
 	}
 }
 
-func GeneticFormed(list []DataTeach) *Genetic {
+func GeneticFormed(list []DataTeach, conf ...GeneticConf) *Genetic {
 	// ====================
-	gen := InitGenetic(GeneticConf{
+	confItem := GeneticConf{
 		Population: 10000,
 		LastBest:   100,
 		DataList:   list,
 		Inps:       len(list),
-	})
+	}
+	if len(conf) > 0 {
+		confItem = conf[0]
+	}
+	gen := InitGenetic(confItem)
 	// ====================
 	gen.GenerateOrdersV7()
-	gen.TrainOrders(1000)
+	gen.TrainOrders(10000)
 	// ====================
 	return gen
 }
